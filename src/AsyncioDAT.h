@@ -36,27 +36,15 @@ private:
 	const char* 		m_warning;
 	const char* 		m_error;
 
-
+	// Asyncio integration
+	bool				m_asyncioInitialized;
+	int32_t				m_executeCount;
+	bool				m_autoProcessEvents;
 
 	void				makeTable(DAT_Output* output, int numRows, int numCols);
 	void				makeText(DAT_Output* output);
-
-	// We don't need to store this pointer, but we do for the example.
-	// The OP_NodeInfo class store information about the node that's using
-	// this instance of the class (like its name).
-	// const OP_NodeInfo*	myNodeInfo;
-
-	// In this example this value will be incremented each time the execute()
-	// function is called, then passes back to the DAT
-	// int32_t				myExecuteCount;
-
-	// double				myOffset;
-
-	// std::string         myChopChanName;
-	// float               myChopChanVal;
-	// std::string         myChop;
-
-	// std::string         myDat;
-
+	void				initializeAsyncio();
+	void				shutdownAsyncio();
+	void				processAsyncioEvents();
 
 };

@@ -1,6 +1,6 @@
-
 #include "AsyncioDAT.h"
 #include "py_bindings.h"
+#include <iostream>
 
 extern "C"
 {
@@ -58,17 +58,24 @@ AsyncioDAT::AsyncioDAT(const OP_NodeInfo* info)
 	:	m_nodeInfo(info)
 	,	m_warning(nullptr)
 	,	m_error(nullptr)
+	,	m_asyncioInitialized(false)
+	,	m_executeCount(0)
+	,	m_autoProcessEvents(true)
 {
+	initializeAsyncio();
 }
 
 AsyncioDAT::~AsyncioDAT()
 {
+	shutdownAsyncio();
 }
 
 void
 AsyncioDAT::getGeneralInfo(DAT_GeneralInfo* ginfo, const OP_Inputs* inputs, void* reserved1)
 {
-	ginfo->cookEveryFrameIfAsked = false;
+	// We want to cook every frame to process asyncio events
+	ginfo->cookEveryFrameIfAsked = true;
+	ginfo->cookEveryFrame = m_autoProcessEvents;
 }
 
 void
@@ -108,96 +115,43 @@ AsyncioDAT::execute(DAT_Output* output,
 {
 	if (!output)
 		return;
-/*
-	if (inputs->getNumInputs() > 0)
-	{
-		inputs->enablePar("Rows", 0);		// not used
-		inputs->enablePar("Cols", 0);		// not used
-		inputs->enablePar("Outputtype", 0);	// not used
 
-		const OP_DATInput	*cinput = inputs->getInputDAT(0);
+	m_executeCount++;
 
-		int numRows = cinput->numRows;
-		int numCols = cinput->numCols;
-		bool isTable = cinput->isTable;
+	// Update auto-process setting from parameter
+	m_autoProcessEvents = inputs->getParInt("Autoprocess") != 0;
 
-		if (!isTable) // is Text
-		{
-			const char* str = cinput->getCell(0, 0);
-			output->setText(str);
-		}
-		else
-		{
-			output->setOutputDataType(DAT_OutDataType::Table);
-			output->setTableSize(numRows, numCols);
-
-			for (int i = 0; i < cinput->numRows; i++)
-			{
-				for (int j = 0; j < cinput->numCols; j++)
-				{
-					const char* str = cinput->getCell(i, j);
-					output->setCellString(i, j, str);
-				}
-			}
-		}
-
+	// Process asyncio events every frame if auto-processing is enabled
+	if (m_autoProcessEvents && m_asyncioInitialized) {
+		processAsyncioEvents();
 	}
-	else // If no input is connected, lets output a custom table/text DAT
-	{
-		inputs->enablePar("Rows", 1);
-		inputs->enablePar("Cols", 1);
-		inputs->enablePar("Outputtype", 1);
 
-		int outputDataType = inputs->getParInt("Outputtype");
-		int	 numRows = inputs->getParInt("Rows");
-		int	 numCols = inputs->getParInt("Cols");
-
-		switch (outputDataType)
-		{
-			case 0:		// Table
-				makeTable(output, numRows, numCols);
-				break;
-
-			case 1:		// Text
-				makeText(output);
-				break;
-
-			default: // table
-				makeTable(output, numRows, numCols);
-				break;
-		}
-
-		// if there is an input chop parameter:
-		const OP_CHOPInput	*cinput = inputs->getParCHOP("Chop");
-		if (cinput)
-		{
-			int numSamples = cinput->numSamples;
-			int ind = 0;
-			for (int i = 0; i < cinput->numChannels; i++)
-			{
-				myChopChanName = std::string(cinput->getChannelName(i));
-				myChop = inputs->getParString("Chop");
-
-				static char tempBuffer[50];
-				myChopChanVal = float(cinput->getChannelData(i)[ind]);
-
-#ifdef _WIN32
-				sprintf_s(tempBuffer, "%g", myChopChanVal);
-#else // macOS
-				snprintf(tempBuffer, sizeof(tempBuffer), "%g", myChopChanVal);
-#endif
-				if (numCols == 0)
-					numCols = 2;
-				output->setTableSize(numRows + i + 1, numCols);
-				output->setCellString(numRows + i, 0, myChopChanName.c_str());
-				output->setCellString(numRows + i, 1, &tempBuffer[0]);
-			}
-
-		}
-
+	// Create status output as text
+	output->setOutputDataType(DAT_OutDataType::Text);
+	
+	std::string statusText = "AsyncioDAT Status\n";
+	statusText += "================\n";
+	statusText += "Execute Count: " + std::to_string(m_executeCount) + "\n";
+	statusText += "Asyncio Initialized: " + std::string(m_asyncioInitialized ? "Yes" : "No") + "\n";
+	statusText += "Auto Process Events: " + std::string(m_autoProcessEvents ? "Yes" : "No") + "\n";
+	
+	if (py::g_asyncioManager) {
+		statusText += "Event Loop Running: " + std::string(py::g_asyncioManager->isRunning() ? "Yes" : "No") + "\n";
+	} else {
+		statusText += "Event Loop Running: No\n";
 	}
-*/
-
+	
+	statusText += "\nAvailable Methods:\n";
+	statusText += "- initialize_asyncio()\n";
+	statusText += "- shutdown_asyncio()\n";
+	statusText += "- process_events()\n";
+	statusText += "- get_event_loop()\n";
+	statusText += "- add_task(coroutine)\n";
+	statusText += "- create_task(coroutine)\n";
+	statusText += "- run_coroutine(coroutine)\n";
+	statusText += "- is_running()\n";
+	
+	output->setText(statusText.c_str());
 }
 
 int32_t
@@ -298,6 +252,18 @@ AsyncioDAT::setupParameters(OP_ParameterManager* manager, void* reserved1)
 		assert(res == OP_ParAppendResult::Success);
 	}
 
+	// Auto process events toggle
+	{
+		OP_NumericParameter	np;
+
+		np.name = "Autoprocess";
+		np.label = "Auto Process Events";
+		np.defaultValues[0] = 1.0;
+
+		OP_ParAppendResult res = manager->appendToggle(np);
+		assert(res == OP_ParAppendResult::Success);
+	}
+
 }
 
 void
@@ -305,5 +271,45 @@ AsyncioDAT::pulsePressed(const char* name, void* reserved1)
 {
 	if (!strcmp(name, "Reset"))
 	{
+		// Reset asyncio - shutdown and reinitialize
+		shutdownAsyncio();
+		initializeAsyncio();
+	}
+}
+
+void
+AsyncioDAT::initializeAsyncio()
+{
+	if (!m_asyncioInitialized) {
+		m_asyncioInitialized = py::ensureAsyncioInitialized();
+		if (m_asyncioInitialized) {
+			std::cout << "AsyncioDAT: Event loop initialized successfully" << std::endl;
+		} else {
+			std::cout << "AsyncioDAT: Failed to initialize event loop" << std::endl;
+			m_error = "Failed to initialize asyncio event loop";
+		}
+	}
+}
+
+void
+AsyncioDAT::shutdownAsyncio()
+{
+	if (m_asyncioInitialized) {
+		py::cleanupAsyncio();
+		m_asyncioInitialized = false;
+		std::cout << "AsyncioDAT: Event loop shutdown" << std::endl;
+	}
+}
+
+void
+AsyncioDAT::processAsyncioEvents()
+{
+	if (m_asyncioInitialized && py::g_asyncioManager) {
+		if (!py::g_asyncioManager->processEvents()) {
+			// If processing fails, try to reinitialize
+			m_warning = "Failed to process asyncio events, reinitializing...";
+			shutdownAsyncio();
+			initializeAsyncio();
+		}
 	}
 }
