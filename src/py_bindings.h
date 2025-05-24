@@ -28,6 +28,7 @@ public:
     bool addTask(PyObject* coro);
     bool isRunning() const { return m_loopRunning; }
     int getReadyCallbackCount();
+	bool createExceptionHandler();
     
 private:
     PyObject* m_asyncioModule;
@@ -41,6 +42,7 @@ private:
     PyObject* m_callSoon;
     PyObject* m_stop;
     PyObject* m_runForever;
+	PyObject* m_exceptionHandler; 
     bool m_loopRunning;
     bool m_initialized;
 };
@@ -48,8 +50,6 @@ private:
 // Global asyncio manager instance
 extern AsyncioManager* g_asyncioManager;
 
-// Python C API Methods for TouchDesigner
-PyObject* helloResponse(PyObject* self, PyObject* args);
 PyObject* initializeAsyncio(PyObject* self, PyObject* args);
 PyObject* shutdownAsyncio(PyObject* self, PyObject* args);
 PyObject* processAsyncioEvents(PyObject* self, PyObject* args);
@@ -58,6 +58,7 @@ PyObject* addAsyncTask(PyObject* self, PyObject* args);
 PyObject* createAsyncTask(PyObject* self, PyObject* args);
 PyObject* runCoroutine(PyObject* self, PyObject* args);
 PyObject* isAsyncioRunning(PyObject* self, PyObject* args);
+PyObject* getCallbackCount(PyObject* self, PyObject* args);
 
 // Property getters/setters
 PyObject* getLoopRunning(PyObject* self, void* closure);

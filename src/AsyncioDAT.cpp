@@ -60,7 +60,7 @@ AsyncioDAT::AsyncioDAT(const OP_NodeInfo* info)
 	,	m_error(nullptr)
 	,	m_asyncioInitialized(false)
 	,	m_executeCount(0)
-	,	m_autoProcessEvents(true)
+	,	m_parAutoProcess(true)
 {
 	initializeAsyncio();
 }
@@ -75,37 +75,32 @@ AsyncioDAT::getGeneralInfo(DAT_GeneralInfo* ginfo, const OP_Inputs* inputs, void
 {
 	// We want to cook every frame to process asyncio events
 	ginfo->cookEveryFrameIfAsked = true;
-	ginfo->cookEveryFrame = m_autoProcessEvents;
+	ginfo->cookEveryFrame = m_parAutoProcess;
 }
 
 void
-AsyncioDAT::makeTable(DAT_Output* output, int numRows, int numCols)
+AsyncioDAT::makeTable(DAT_Output* output)
 {
-	// output->setOutputDataType(DAT_OutDataType::Table);
-	// output->setTableSize(numRows, numCols);
+	output->setOutputDataType(DAT_OutDataType::Table);
+	output->setTableSize(static_cast<int32_t>(m_status_messages.size()), 1);
 
-	// std::array<const char*, 5> data = { "this", "is", "some", "test", "data"};
-
-	// for (int i = 0; i < numRows; i++)
-	// {
-	// 	for (int j = 0; j < numCols; j++)
-	// 	{
-	// 		int j2 = j;
-
-	// 		// If we are asked to make more columns than we have data for
-	// 		if (j2 >= data.size())
-	// 			j2 = j2 % data.size();
-
-	// 		output->setCellString(i, j, data[j2]);
-	// 	}
-	// }
+	for (int32_t i = 0; i < m_status_messages.size(); i++) {
+		output->setCellString(static_cast<int32_t>(m_status_messages.size() - i - 1)
+			, 0
+			, m_status_messages[i].c_str()
+		);
+	}
 }
 
 void
-AsyncioDAT::makeText(DAT_Output* output)
+AsyncioDAT::addStatusMessage(const std::string& message)
 {
-	// output->setOutputDataType(DAT_OutDataType::Text);
-	// output->setText("This is some test data.");
+	if (m_parMaxstatusrows > 0) {
+		m_status_messages.push_back(message);
+	}
+    while (m_status_messages.size() > m_parMaxstatusrows) {
+        m_status_messages.pop_front();
+    }
 }
 
 void
@@ -117,41 +112,37 @@ AsyncioDAT::execute(DAT_Output* output,
 		return;
 
 	m_executeCount++;
+	m_warning = nullptr;
+	m_error = nullptr;
 
-	// Update auto-process setting from parameter
-	m_autoProcessEvents = inputs->getParInt("Autoprocess") != 0;
+	auto parActive = inputs->getParInt("Active") > 0;
+	if (parActive != m_parActive) {
+		m_parActive = parActive;
+		if (m_parActive) {
+			initializeAsyncio();
+			addStatusMessage("Asyncio event loop started");
+		} else {
+			shutdownAsyncio();
+			addStatusMessage("Asyncio event loop stopped");
+		}
+	}
 
-	// Process asyncio events every frame if auto-processing is enabled
-	if (m_autoProcessEvents && m_asyncioInitialized) {
+	auto parAutoProcess = inputs->getParInt("Autoprocess") > 0;
+	if (parAutoProcess != m_parAutoProcess) {
+		m_parAutoProcess = parAutoProcess;
+		if (m_parAutoProcess) {
+			addStatusMessage("Asyncio event loop auto processing started");
+		} else {
+			addStatusMessage("Asyncio event loop auto processing stopped");
+		}
+	}
+	m_parMaxstatusrows = inputs->getParInt("Maxstatusrows");
+
+	if (m_parActive && m_parAutoProcess && m_asyncioInitialized) {
 		processAsyncioEvents();
 	}
 
-	// Create status output as text
-	output->setOutputDataType(DAT_OutDataType::Text);
-	
-	std::string statusText = "AsyncioDAT Status\n";
-	statusText += "================\n";
-	statusText += "Execute Count: " + std::to_string(m_executeCount) + "\n";
-	statusText += "Asyncio Initialized: " + std::string(m_asyncioInitialized ? "Yes" : "No") + "\n";
-	statusText += "Auto Process Events: " + std::string(m_autoProcessEvents ? "Yes" : "No") + "\n";
-	
-	if (py::g_asyncioManager) {
-		statusText += "Event Loop Running: " + std::string(py::g_asyncioManager->isRunning() ? "Yes" : "No") + "\n";
-	} else {
-		statusText += "Event Loop Running: No\n";
-	}
-	
-	statusText += "\nAvailable Methods:\n";
-	statusText += "- initialize_asyncio()\n";
-	statusText += "- shutdown_asyncio()\n";
-	statusText += "- process_events()\n";
-	statusText += "- get_event_loop()\n";
-	statusText += "- add_task(coroutine)\n";
-	statusText += "- create_task(coroutine)\n";
-	statusText += "- run_coroutine(coroutine)\n";
-	statusText += "- is_running()\n";
-	
-	output->setText(statusText.c_str());
+	makeTable(output);
 }
 
 int32_t
@@ -159,13 +150,20 @@ AsyncioDAT::getNumInfoCHOPChans(void* reserved1)
 {
 	// We return the number of channel we want to output to any Info CHOP
 	// connected to the CHOP. In this example we are just going to send one channel.
-	return 4;
+	return 1;
 }
 
 void
 AsyncioDAT::getInfoCHOPChan(int32_t index,
 									OP_InfoCHOPChan* chan, void* reserved1)
 {
+	if (index == 0) {
+		chan->name->setString("execute_count");
+		chan->value = static_cast<float>(m_executeCount);
+	} else {
+		chan->name->setString("chan");
+		chan->value = 0;
+	}
 
 }
 
@@ -177,103 +175,83 @@ AsyncioDAT::getInfoDATSize(OP_InfoDATSize* infoSize, void* reserved1)
 
 void
 AsyncioDAT::getInfoDATEntries(int32_t index,
-									int32_t nEntries,
-									OP_InfoDATEntries* entries,
-									void* reserved1)
+								int32_t nEntries,
+								OP_InfoDATEntries* entries,
+								void* reserved1)
 {
 }
 
 void
 AsyncioDAT::setupParameters(OP_ParameterManager* manager, void* reserved1)
 {
-	// CHOP
-	{
-		OP_StringParameter	np;
-
-		np.name = "Chop";
-		np.label = "CHOP";
-
-		OP_ParAppendResult res = manager->appendCHOP(np);
-		assert(res == OP_ParAppendResult::Success);
-	}
-
-	// Number of Rows
 	{
 		OP_NumericParameter	np;
-
-		np.name = "Rows";
-		np.label = "Rows";
-		np.defaultValues[0] = 4;
-		np.minSliders[0] = 0;
-		np.maxSliders[0] = 10;
-
-		OP_ParAppendResult res = manager->appendInt(np);
-		assert(res == OP_ParAppendResult::Success);
-	}
-
-	// Number of Columns
-	{
-		OP_NumericParameter	np;
-
-		np.name = "Cols";
-		np.label = "Cols";
-		np.defaultValues[0] = 5;
-		np.minSliders[0] = 0;
-		np.maxSliders[0] = 10;
-
-		OP_ParAppendResult res = manager->appendInt(np);
-		assert(res == OP_ParAppendResult::Success);
-	}
-
-	// DAT output type
-	{
-		OP_StringParameter	sp;
-
-		sp.name = "Outputtype";
-		sp.label = "Output Type";
-
-		sp.defaultValue = "Table";
-
-		const char *names[] = {"Table", "Text"};
-		const char *labels[] = {"Table", "Text"};
-
-		OP_ParAppendResult res = manager->appendMenu(sp, 2, names, labels);
-		assert(res == OP_ParAppendResult::Success);
-	}
-
-	// pulse
-	{
-		OP_NumericParameter	np;
-
-		np.name = "Reset";
-		np.label = "Reset";
-
-		OP_ParAppendResult res = manager->appendPulse(np);
-		assert(res == OP_ParAppendResult::Success);
-	}
-
-	// Auto process events toggle
-	{
-		OP_NumericParameter	np;
-
-		np.name = "Autoprocess";
-		np.label = "Auto Process Events";
-		np.defaultValues[0] = 1.0;
+		np.page = "Asyncio";
+		np.name = "Active";
+		np.label = "Active";
+		np.defaultValues[0] = 1;
 
 		OP_ParAppendResult res = manager->appendToggle(np);
 		assert(res == OP_ParAppendResult::Success);
 	}
 
+	{
+		OP_NumericParameter	np;
+		np.page = "Asyncio";
+		np.name = "Reset";
+		np.label = "Reset";
+		np.defaultValues[0] = 0;
+
+		OP_ParAppendResult res = manager->appendPulse(np);
+		assert(res == OP_ParAppendResult::Success);
+	}
+
+	{
+		OP_NumericParameter	np;
+		np.page = "Asyncio";
+		np.name = "Autoprocess";
+		np.label = "Auto Process Events";
+		np.defaultValues[0] = 1;
+
+		OP_ParAppendResult res = manager->appendToggle(np);
+		assert(res == OP_ParAppendResult::Success);
+	}
+
+	{
+		OP_NumericParameter	np;
+		np.page = "Asyncio";
+		np.name = "Maxstatusrows";
+		np.label = "Max Status Rows";
+		np.defaultValues[0] = 10;
+		np.minValues[0] = 0;
+		np.maxValues[0] = 10;
+		np.clampMins[0] = true;
+		np.clampMaxes[0] = false;
+		OP_ParAppendResult res = manager->appendInt(np);
+		assert(res == OP_ParAppendResult::Success);
+	}
+
+	{
+		OP_NumericParameter	np;
+		np.page = "Asyncio";
+		np.name = "Clearstatus";
+		np.label = "Clear Status";
+		OP_ParAppendResult res = manager->appendPulse(np);
+		assert(res == OP_ParAppendResult::Success);
+	}
 }
 
 void
 AsyncioDAT::pulsePressed(const char* name, void* reserved1)
 {
-	if (!strcmp(name, "Reset"))
-	{
-		// Reset asyncio - shutdown and reinitialize
+	if (!strcmp(name, "Reset")) {
 		shutdownAsyncio();
 		initializeAsyncio();
+		addStatusMessage("Asyncio event loop reset");
+	} else if (!strcmp(name, "Clearstatus")) {
+		m_status_messages.clear();
+	} else {
+		std::cout << "AsyncioDAT: Unknown pulse pressed: " << name << std::endl;
 	}
 }
 
@@ -306,7 +284,6 @@ AsyncioDAT::processAsyncioEvents()
 {
 	if (m_asyncioInitialized && py::g_asyncioManager) {
 		if (!py::g_asyncioManager->processEvents()) {
-			// If processing fails, try to reinitialize
 			m_warning = "Failed to process asyncio events, reinitializing...";
 			shutdownAsyncio();
 			initializeAsyncio();

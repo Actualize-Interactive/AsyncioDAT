@@ -6,6 +6,34 @@
 namespace py
 {
 
+PyMethodDef methods[] =
+{
+    {"initialize_asyncio", py::initializeAsyncio, METH_NOARGS, "Initialize the asyncio event loop"},
+    {"shutdown_asyncio", py::shutdownAsyncio, METH_NOARGS, "Shutdown the asyncio event loop"},
+    {"process_events", py::processAsyncioEvents, METH_NOARGS, "Process asyncio events for one frame"},
+    {"get_event_loop", py::getEventLoop, METH_NOARGS, "Get the current event loop"},
+    {"add_task", py::addAsyncTask, METH_VARARGS, "Add a coroutine as a task to the event loop"},    
+    {"create_task", py::createAsyncTask, METH_VARARGS, "Create a task from a coroutine"},
+    {"run_coroutine", py::runCoroutine, METH_VARARGS, "Run a coroutine until complete"},
+    {"is_running", py::isAsyncioRunning, METH_NOARGS, "Check if asyncio is running"},
+    {"get_callback_count", py::getCallbackCount, METH_NOARGS, "Get number of ready callbacks in the event loop"},
+    {0}	// Sentinel
+};
+
+PyGetSetDef getSets[] =
+{
+    {"loop_running", py::getLoopRunning, nullptr, "Whether the event loop is running", nullptr},
+    {"asyncio_initialized", py::getAsyncioInitialized, nullptr, "Whether asyncio is initialized", nullptr},
+    {0}	// Sentinel
+};
+
+const char* pythonCallbacksDATStubs =
+"# AsyncioDAT Python Callbacks\n"
+"\n"
+"\n";
+
+
+
 // Global asyncio manager instance
 AsyncioManager* g_asyncioManager = nullptr;
 
@@ -24,6 +52,7 @@ AsyncioManager::AsyncioManager()
     , m_runForever(nullptr)
     , m_loopRunning(false)
     , m_initialized(false)
+    , m_exceptionHandler(nullptr)
 {
 }
 
@@ -93,6 +122,12 @@ bool AsyncioManager::initialize()
     }
     Py_DECREF(result);
 
+    if (!createExceptionHandler()) {
+        PyErr_Print();
+        shutdown();
+        return false;
+    }
+
     m_initialized = true;
     m_loopRunning = true;  // Mark as running since we've set it as the current loop
     std::cout << "Asyncio event loop initialized successfully" << std::endl;
@@ -124,6 +159,7 @@ void AsyncioManager::shutdown()
     Py_XDECREF(m_newEventLoop);
     Py_XDECREF(m_eventLoop);
     Py_XDECREF(m_asyncioModule);
+    Py_XDECREF(m_exceptionHandler);
 
     m_runForever = nullptr;
     m_stop = nullptr;
@@ -136,6 +172,7 @@ void AsyncioManager::shutdown()
     m_newEventLoop = nullptr;
     m_eventLoop = nullptr;
     m_asyncioModule = nullptr;
+    m_exceptionHandler = nullptr;
 
     m_initialized = false;
     m_loopRunning = false;
@@ -244,7 +281,18 @@ bool AsyncioManager::addTask(PyObject* coro)
             return false;
         }
 
-        Py_DECREF(task); // Task is now managed by the loop        std::cout << "Task added successfully using ensure_future" << std::endl;
+        if (m_exceptionHandler) {
+            PyObject* addDoneCallback = PyObject_GetAttrString(task, "add_done_callback");
+            if (addDoneCallback) {
+                PyObject* callbackArgs = PyTuple_Pack(1, m_exceptionHandler);
+                PyObject* callbackResult = PyObject_CallObject(addDoneCallback, callbackArgs);
+                Py_DECREF(callbackArgs);
+                Py_XDECREF(callbackResult);
+                Py_DECREF(addDoneCallback);
+            }
+        }
+
+        Py_DECREF(task); // Task is now managed by the loop
         return true;
     }
     catch (...) {
@@ -285,20 +333,47 @@ int AsyncioManager::getReadyCallbackCount()
     }
 }
 
-// Python C API Method Implementations
-
-PyObject* helloResponse(PyObject* self, PyObject* args)
+bool AsyncioManager::createExceptionHandler()
 {
-    const char* str = nullptr;
-    if (!PyArg_ParseTuple(args, "s", &str)) {
-        PyErr_SetString(PyExc_TypeError, "Invalid argument");
-        return nullptr;
+    // Create a simple exception handler using Python code
+    const char* handlerCode = 
+        "def _task_done_callback(task):\n"
+        "    try:\n"
+        "        task.result()\n"
+        "    except Exception as e:\n"
+        "        print(f'AsyncioDAT task exception: {e}')\n"
+        "\n"
+        "_task_done_callback\n";
+    
+    PyObject* globals = PyDict_New();
+    PyObject* locals = PyDict_New();
+    
+    // Add necessary imports to globals
+    PyObject* builtins = PyImport_ImportModule("builtins");
+    if (builtins) {
+        PyDict_SetItemString(globals, "__builtins__", builtins);
+        Py_DECREF(builtins);
     }
-    std::string result = "Hello ";
-    result += str;
-    result += "!";
-    return PyUnicode_FromString(result.c_str());
+    
+    PyObject* compiled = Py_CompileString(handlerCode, "<exception_handler>", Py_file_input);
+    if (compiled) {
+        PyObject* result = PyEval_EvalCode(compiled, globals, locals);
+        if (result) {
+            m_exceptionHandler = PyDict_GetItemString(locals, "_task_done_callback");
+            if (m_exceptionHandler) {
+                Py_INCREF(m_exceptionHandler);
+            }
+            Py_DECREF(result);
+        }
+        Py_DECREF(compiled);
+    }
+    Py_DECREF(globals);
+    Py_DECREF(locals);
+
+    return m_exceptionHandler != nullptr;
 }
+
+// Python C API Method Implementations
 
 PyObject* initializeAsyncio(PyObject* self, PyObject* args)
 {
@@ -477,97 +552,6 @@ void cleanupAsyncio()
     }
 }
 
-// Method definitions for TouchDesigner
-PyMethodDef methods[] =
-{
-    {"hello", py::helloResponse, METH_VARARGS, "Say hello"},
-    {"initialize_asyncio", py::initializeAsyncio, METH_NOARGS, "Initialize the asyncio event loop"},
-    {"shutdown_asyncio", py::shutdownAsyncio, METH_NOARGS, "Shutdown the asyncio event loop"},
-    {"process_events", py::processAsyncioEvents, METH_NOARGS, "Process asyncio events for one frame"},
-    {"get_event_loop", py::getEventLoop, METH_NOARGS, "Get the current event loop"},
-    {"add_task", py::addAsyncTask, METH_VARARGS, "Add a coroutine as a task to the event loop"},    {"create_task", py::createAsyncTask, METH_VARARGS, "Create a task from a coroutine"},
-    {"run_coroutine", py::runCoroutine, METH_VARARGS, "Run a coroutine until complete"},
-    {"is_running", py::isAsyncioRunning, METH_NOARGS, "Check if asyncio is running"},
-    {"get_callback_count", py::getCallbackCount, METH_NOARGS, "Get number of ready callbacks in the event loop"},
-    {0}	// Sentinel
-};
 
-PyGetSetDef getSets[] =
-{
-    {"loop_running", py::getLoopRunning, nullptr, "Whether the event loop is running", nullptr},
-    {"asyncio_initialized", py::getAsyncioInitialized, nullptr, "Whether asyncio is initialized", nullptr},
-    {0}	// Sentinel
-};
-
-const char* pythonCallbacksDATStubs =
-"# AsyncioDAT Python Callbacks and Examples\n"
-"# This DAT provides access to asyncio functionality within TouchDesigner\n"
-"\n"
-"import asyncio\n"
-"import time\n"
-"\n"
-"# Example async function that can be run in the managed event loop\n"
-"async def example_async_task(name, duration=1.0):\n"
-"    \"\"\"Example async task that sleeps for a duration\"\"\"\n"
-"    print(f'Starting task: {name}')\n"
-"    await asyncio.sleep(duration)\n"
-"    print(f'Completed task: {name}')\n"
-"    return f'Result from {name}'\n"
-"\n"
-"# Example of how to add a task to the managed loop\n"
-"def add_example_task():\n"
-"    \"\"\"Add an example task to the asyncio loop\"\"\"\n"
-"    coro = example_async_task('example', 2.0)\n"
-"    return op('asynciodat1').add_task(coro)\n"
-"\n"
-"# Example async function for network requests\n"
-"async def fetch_data(url):\n"
-"    \"\"\"Example async function for HTTP requests\"\"\"\n"
-"    import aiohttp\n"
-"    async with aiohttp.ClientSession() as session:\n"
-"        async with session.get(url) as response:\n"
-"            return await response.text()\n"
-"\n"
-"# Example periodic task\n"
-"async def periodic_task(interval=1.0):\n"
-"    \"\"\"Example periodic task\"\"\"\n"
-"    count = 0\n"
-"    while True:\n"
-"        print(f'Periodic task tick: {count}')\n"
-"        count += 1\n"
-"        await asyncio.sleep(interval)\n"
-"        if count > 10:  # Stop after 10 iterations\n"
-"            break\n"
-"\n"
-"# Convenience functions for common operations\n"
-"def initialize():\n"
-"    \"\"\"Initialize the asyncio event loop\"\"\"\n"
-"    return op('asynciodat1').initialize_asyncio()\n"
-"\n"
-"def add_periodic_task(interval=1.0):\n"
-"    \"\"\"Add a periodic task to the event loop\"\"\"\n"
-"    coro = periodic_task(interval)\n"
-"    return op('asynciodat1').add_task(coro)\n"
-"\n"
-"def get_loop():\n"
-"    \"\"\"Get the current event loop\"\"\"\n"
-"    return op('asynciodat1').get_event_loop()\n"
-"\n"
-"def is_running():\n"
-"    \"\"\"Check if asyncio is running\"\"\"\n"
-"    return op('asynciodat1').is_running()\n"
-"\n"
-"# Called when the DAT is first created\n"
-"def onStart():\n"
-"    \"\"\"Called when the operator starts\"\"\"\n"
-"    print('AsyncioDAT starting...')\n"
-"    initialize()\n"
-"\n"
-"# Called when the DAT is destroyed\n"
-"def onDestroy():\n"
-"    \"\"\"Called when the operator is destroyed\"\"\"\n"
-"    print('AsyncioDAT shutting down...')\n"
-"    op('asynciodat1').shutdown_asyncio()\n"
-"\n";
 
 } // namespace py

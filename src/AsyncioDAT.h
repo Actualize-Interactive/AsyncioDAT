@@ -1,8 +1,9 @@
 
 #include "DAT_CPlusPlusBase.h"
 #include <string>
-using namespace TD;
+#include <deque>
 
+using namespace TD;
 
 class AsyncioDAT : public DAT_CPlusPlusBase
 {
@@ -32,17 +33,26 @@ public:
 	virtual void		pulsePressed(const char* name, void* reserved1) override;
 
 private:
-	const OP_NodeInfo*	m_nodeInfo;
-	const char* 		m_warning;
-	const char* 		m_error;
+	const OP_NodeInfo*		 m_nodeInfo;
+	const char* 			 m_warning;
+	const char* 			 m_error;
+	uint32_t			     m_executeCount;
+	std::deque<std::string> m_status_messages;
 
-	// Asyncio integration
-	bool				m_asyncioInitialized;
-	int32_t				m_executeCount;
-	bool				m_autoProcessEvents;
+	bool m_parActive;
+	bool m_parAutoProcess;
+	bool m_parReset;
+	bool m_parClearStatus;
+	uint64_t m_parMaxstatusrows;
 
-	void				makeTable(DAT_Output* output, int numRows, int numCols);
-	void				makeText(DAT_Output* output);
+	bool					 m_asyncioInitialized;
+
+
+
+	void				makeTable(DAT_Output* output);
+	void				addStatusMessage(const std::string& message);
+
+
 	void				initializeAsyncio();
 	void				shutdownAsyncio();
 	void				processAsyncioEvents();

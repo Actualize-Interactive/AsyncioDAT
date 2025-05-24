@@ -53,7 +53,7 @@ async def error_prone_task():
         print("Task succeeded!")
         return "Success"
     else:
-        print("Task failed!")
+        print("Task will fail...")
         raise Exception("Random failure occurred")
 
 # Utility functions for testing
@@ -94,9 +94,20 @@ def add_multiple_tasks():
     print("Multiple tasks added to the event loop")
 
 def add_error_task():
-    """Add a task that might fail"""
+    """Add a task that might fail - with proper exception handling"""
     print("=== Adding Error-Prone Task ===")
-    error_coro = error_prone_task()
+    
+    async def safe_error_task():
+        """Wrapper that handles exceptions properly"""
+        try:
+            result = await error_prone_task()
+            print(f"Error-prone task result: {result}")
+            return result
+        except Exception as e:
+            print(f"Caught exception in error-prone task: {e}")
+            return None
+    
+    error_coro = safe_error_task()
     asyncio_op.add_task(error_coro)
 
 def manual_process_events():
@@ -159,6 +170,31 @@ def add_http_task():
     http_coro = fetch_example()
     asyncio_op.add_task(http_coro)
 
+# Add a new function to test exception handling
+def test_exception_handling():
+    """Test proper exception handling in tasks"""
+    print("=== Testing Exception Handling ===")
+    
+    async def controlled_failure():
+        """Task that always fails but handles it properly"""
+        try:
+            await asyncio.sleep(0.1)
+            raise ValueError("Controlled test exception")
+        except ValueError as e:
+            print(f"Handled controlled exception: {e}")
+            return "Exception handled successfully"
+    
+    async def success_task():
+        """Task that succeeds"""
+        await asyncio.sleep(0.1)
+        print("Success task completed")
+        return "Success"
+    
+    # Add both tasks
+    asyncio_op.add_task(controlled_failure())
+    asyncio_op.add_task(success_task())
+    print("Exception handling test tasks added")
+
 # Main test function that can be called from TouchDesigner
 def run_all_tests():
     """Run comprehensive tests of AsyncioDAT functionality"""
@@ -175,6 +211,9 @@ def run_all_tests():
     print()
     
     add_error_task()
+    print()
+    
+    test_exception_handling()
     print()
     
     test_task_creation()
