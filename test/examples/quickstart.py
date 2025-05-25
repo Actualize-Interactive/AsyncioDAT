@@ -77,8 +77,7 @@ def add_delayed_message():
         loop.call_later(10, lambda: print("[Delayed] This message appeared after 10 seconds!"))
         print("✓ Delayed message scheduled for 10 seconds from now")
 
-# Uncomment the next line to test delayed messages
-# add_delayed_message()
+add_delayed_message()
 
 print("\n" + "=" * 40)
 print("Async tasks are now running in the background!")
