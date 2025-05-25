@@ -14,30 +14,29 @@
 // Forward declaration
 class AsyncioDAT;
 
-namespace py
-{
-extern PyMethodDef methods[];
-extern PyGetSetDef getSets[];
-extern const char* pythonCallbacksDATStubs;
+
+extern PyMethodDef py_methods[];
+extern PyGetSetDef py_getSets[];
+extern const char* py_callbacksDATStubs;
 
 // Global active instance management
 extern AsyncioDAT* g_activeAsyncioInstance;
-void setActiveAsyncioInstance(AsyncioDAT* instance);
-AsyncioDAT* getActiveAsyncioInstance();
+
+extern "C" {
 
 // Python C API Method Implementations
-PyObject* initializeAsyncio(PyObject* self, PyObject* args);
-PyObject* shutdownAsyncio(PyObject* self, PyObject* args);
-PyObject* processAsyncioEvents(PyObject* self, PyObject* args);
-PyObject* getEventLoop(PyObject* self, PyObject* args);
-PyObject* addAsyncTask(PyObject* self, PyObject* args);
-PyObject* createAsyncTask(PyObject* self, PyObject* args);
-PyObject* runCoroutine(PyObject* self, PyObject* args);
-PyObject* isAsyncioRunning(PyObject* self, PyObject* args);
-PyObject* getCallbackCount(PyObject* self, PyObject* args);
+PyObject* py_initializeAsyncio(PyObject* self, PyObject* args);
+PyObject* py_shutdownAsyncio(PyObject* self, PyObject* args);
+PyObject* py_processAsyncioEvents(PyObject* self, PyObject* args);
+PyObject* py_getEventLoop(PyObject* self, PyObject* args);
+PyObject* py_addAsyncTask(PyObject* self, PyObject* args);
+PyObject* py_createAsyncTask(PyObject* self, PyObject* args);
+PyObject* py_runCoroutine(PyObject* self, PyObject* args);
+PyObject* py_isAsyncioRunning(PyObject* self, PyObject* args);
+PyObject* py_getCallbackCount(PyObject* self, PyObject* args);
 
 // Property getters/setters
-PyObject* getLoopRunning(PyObject* self, void* closure);
-PyObject* getAsyncioInitialized(PyObject* self, void* closure);
+PyObject* py_getLoopRunning(PyObject* self, void* closure);
+PyObject* py_getAsyncioInitialized(PyObject* self, void* closure);
 
-} // namespace py
+} // extern "C"

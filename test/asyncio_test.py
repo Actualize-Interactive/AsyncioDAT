@@ -232,7 +232,7 @@ def test_set_pars():
         comp.par.Toggle : True
     }   
 
-    asyncio_op.add_task(set_pars_task(comp, par_values, offset=0.5))
+    asyncio_op.add_task(set_pars_task(comp, par_values, offset=1.0))
 
 # Main test function that can be called from TouchDesigner
 def run_all_tests():

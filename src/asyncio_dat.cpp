@@ -33,9 +33,9 @@ FillDATPluginInfo(DAT_PluginInfo *info)
 	info->customOPInfo.maxInputs = 1;
 
 	info->customOPInfo.pythonVersion->setString(PY_VERSION);
-	info->customOPInfo.pythonMethods = py::methods;
-	info->customOPInfo.pythonGetSets = py::getSets;
-	info->customOPInfo.pythonCallbacksDAT = py::pythonCallbacksDATStubs;
+	info->customOPInfo.pythonMethods = py_methods;
+	info->customOPInfo.pythonGetSets = py_getSets;
+	info->customOPInfo.pythonCallbacksDAT = py_callbacksDATStubs;
 
 }
 
@@ -54,6 +54,17 @@ DestroyDATInstance(DAT_CPlusPlusBase* instance)
 }
 
 }; // extern "C"
+
+
+void setActiveAsyncioInstance(AsyncioDAT* instance)
+{
+    g_activeAsyncioInstance = instance;
+}
+
+AsyncioDAT* getActiveAsyncioInstance()
+{
+    return g_activeAsyncioInstance;
+}
 
 AsyncioDAT::AsyncioDAT(const OP_NodeInfo* info) 
 	: m_nodeInfo(info)
@@ -272,7 +283,7 @@ void
 AsyncioDAT::pulsePressed(const char* name, void* reserved1)
 {
 	if (!strcmp(name, "Reset")) {
-		if (py::getActiveAsyncioInstance() == this) {
+		if (getActiveAsyncioInstance() == this) {
 			shutdownAsyncio();
 			initializeAsyncio();
 		} else {
@@ -302,19 +313,19 @@ AsyncioDAT::getErrorString(OP_String* error, void* reserved1)
 bool
 AsyncioDAT::tryBecomeActiveInstance()
 {
-	if (py::getActiveAsyncioInstance() == nullptr) {
-		py::setActiveAsyncioInstance(this);
+	if (getActiveAsyncioInstance() == nullptr) {
+		setActiveAsyncioInstance(this);
 		std::cout << "AsyncioDAT instance is now the active instance." << std::endl;
 		return true;
 	}
-	return py::getActiveAsyncioInstance() == this;
+	return getActiveAsyncioInstance() == this;
 }
 
 void
 AsyncioDAT::releaseActiveInstance()
 {
-	if (py::getActiveAsyncioInstance() == this) {
-		py::setActiveAsyncioInstance(nullptr);
+	if (getActiveAsyncioInstance() == this) {
+		setActiveAsyncioInstance(nullptr);
 	}
 }
 
@@ -412,7 +423,7 @@ AsyncioDAT::initializeAsyncio()
 		PyObject* callback_args = m_nodeInfo->context->createArgumentsTuple(1, nullptr);
 		PyTuple_SET_ITEM(callback_args, 1, PyBool_FromLong(1));
 
-		PyObject *result = m_nodeInfo->context->callPythonCallback("on_initialize", callback_args, nullptr, nullptr);
+		result = m_nodeInfo->context->callPythonCallback("on_initialize", callback_args, nullptr, nullptr);
 		Py_DECREF(callback_args);
 
 		if (result) {
