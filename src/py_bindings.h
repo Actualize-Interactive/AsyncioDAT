@@ -39,4 +39,13 @@ PyObject* py_getCallbackCount(PyObject* self, PyObject* args);
 PyObject* py_getLoopRunning(PyObject* self, void* closure);
 PyObject* py_getAsyncioInitialized(PyObject* self, void* closure);
 
+// Plugins
+PyObject* py_setPlugin(PyObject* self, PyObject* args);
+PyObject* py_getPlugin(PyObject* self, PyObject* args);
+PyObject* py_delPlugin(PyObject* self, PyObject* args);
+PyObject* py_hasPlugin(PyObject* self, PyObject* args);
+PyObject* py_clearPlugins(PyObject* self, PyObject* args);
+PyObject* py_getPluginNames(PyObject* self, void* closure);
+PyObject* py_getPlugins(PyObject* self, void* closure);
+
 } // extern "C"

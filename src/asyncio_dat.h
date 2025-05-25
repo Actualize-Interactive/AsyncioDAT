@@ -44,39 +44,54 @@ public:
 	uint32_t				 getProcessEventsCount() const { return m_processEventsCount; }
 	double					 getLastProcessEventsTime() const { return m_lastProcessEventsTime; }
 
+	bool 					 addPlugin(const char* name, PyObject* obj);
+	bool 					 removePlugin(const char* name);
+	PyObject* 				 getPlugin(const char* name) const;
+	PyObject* 				 getPluginNames() const;
+	void					 clearPlugins();
+	bool					 hasPlugin(const char* name) const;
+
+	// For Python bindings access
+	PyObject*				 getPluginsDict() const { return m_plugins; }
+
 private:
 	const OP_NodeInfo*		 m_nodeInfo;
 	const char* 			 m_warning;
 	const char* 			 m_error;
 	std::deque<std::string>  m_status_messages;
+
 	inline static bool       s_called_on_startup = false;
-
-
 	bool      				 m_autoProcess;
 	int32_t    				 m_maxstatusrows;	
 	bool      				 m_asyncioInitialized;
 
+	PyObject* 				 m_asyncioModule;
+	PyObject* 				 m_eventLoop;
+	PyObject* 				 m_newEventLoop;
+	PyObject* 				 m_setEventLoop;
+	PyObject* 				 m_getEventLoop;
+	PyObject* 				 m_runUntilComplete;
+	PyObject* 				 m_createTask;
+	PyObject* 				 m_sleep;
+	PyObject* 				 m_callSoon;
+	PyObject* 				 m_stop;
+	PyObject* 				 m_runForever;
+	PyObject* 				 m_exceptionHandler;
+	bool     				 m_loopRunning;
+	uint32_t 				 m_processEventsCount;
+	double    				 m_lastProcessEventsTime;
 
-	// Asyncio management
-	PyObject* m_asyncioModule;
-	PyObject* m_eventLoop;
-	PyObject* m_newEventLoop;
-	PyObject* m_setEventLoop;
-	PyObject* m_getEventLoop;
-	PyObject* m_runUntilComplete;
-	PyObject* m_createTask;
-	PyObject* m_sleep;
-	PyObject* m_callSoon;
-	PyObject* m_stop;
-	PyObject* m_runForever;
-	PyObject* m_exceptionHandler;
-	bool      m_loopRunning;
-	uint32_t  m_processEventsCount;
-	double    m_lastProcessEventsTime;
+public:
+	PyObject* 				 m_plugins;  // Made public for Python bindings access
 
+private:
 	void					 makeTable(DAT_Output* output);
 	void					 addStatusMessage(const std::string& message);
 	bool					 createExceptionHandler();
 	bool					 tryBecomeActiveInstance();
 	void					 releaseActiveInstance();
+
+
+
 };
+

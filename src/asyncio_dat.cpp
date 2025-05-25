@@ -87,6 +87,7 @@ AsyncioDAT::AsyncioDAT(const OP_NodeInfo* info)
 	, m_loopRunning(false)
 	, m_processEventsCount(0)
 	, m_lastProcessEventsTime(0.0)
+	, m_plugins(nullptr)
 {
 	// Try to become the active instance on creation
 	if (tryBecomeActiveInstance()) {
@@ -99,7 +100,6 @@ AsyncioDAT::AsyncioDAT(const OP_NodeInfo* info)
 AsyncioDAT::~AsyncioDAT()
 {
 	shutdownAsyncio();
-	releaseActiveInstance();
 }
 
 void
@@ -342,6 +342,16 @@ AsyncioDAT::initializeAsyncio()
 		return true;
 	}
 
+	// Initialize plugins dictionary only when this instance becomes active
+	if (!m_plugins) {
+		m_plugins = PyDict_New();
+		if (!m_plugins) {
+			m_error = "Failed to create plugins dictionary";
+			addStatusMessage(m_error);
+			return false;
+		}
+	}
+
 	// Import asyncio module
 	m_asyncioModule = PyImport_ImportModule("asyncio");
 	if (!m_asyncioModule) {
@@ -432,12 +442,19 @@ AsyncioDAT::initializeAsyncio()
 	}
 	std::cout << "Asyncio event loop initialized successfully" << std::endl;
 
+
+
 	return true;
 }
 
 void
 AsyncioDAT::shutdownAsyncio()
 {
+	// Clean up plugins dictionary
+	clearPlugins();
+	Py_XDECREF(m_plugins);
+	m_plugins = nullptr;
+
 	if (m_loopRunning && m_eventLoop && m_stop) {
 		PyObject* args = PyTuple_New(0);
 		PyObject* result = PyObject_CallObject(m_stop, args);
@@ -711,4 +728,110 @@ AsyncioDAT::getReadyCallbackCount()
 		PyErr_Clear();
 		return -1;
 	}
+}
+
+bool
+AsyncioDAT::addPlugin(const char* name, PyObject* obj)
+{
+    if (!m_plugins || !name || !obj) {
+        return false;
+    }
+    
+    // Validate name is not empty
+    if (strlen(name) == 0) {
+        addStatusMessage("Plugin name cannot be empty");
+        return false;
+    }
+    
+    // Check if name already exists and remove old object if it does
+    PyObject* nameKey = PyUnicode_FromString(name);
+    if (PyDict_Contains(m_plugins, nameKey)) {
+        removePlugin(name);
+    }
+    Py_DECREF(nameKey);
+
+    // Add the new object (this will increment its reference count)
+    int result = PyDict_SetItemString(m_plugins, name, obj);
+    
+    if (result == 0) {
+        addStatusMessage(std::string("Added plugin: ") + name);
+        return true;
+    } else {
+        addStatusMessage(std::string("Failed to add plugin: ") + name);
+        return false;
+    }
+}
+
+bool
+AsyncioDAT::removePlugin(const char* name)
+{
+	if (!m_plugins || !name) {
+		return false;
+	}
+
+	// Remove the object associated with the name
+	int result = PyDict_DelItemString(m_plugins, name);
+	
+	if (result == 0) {
+		addStatusMessage(std::string("Removed plugin: ") + name);
+		return true;
+	} else {
+		addStatusMessage(std::string("Failed to remove plugin: ") + name);
+		return false;
+	}
+}
+
+PyObject*
+AsyncioDAT::getPlugin(const char* name) const
+{
+	if (!m_plugins || !name) {
+		Py_RETURN_NONE;
+	}
+
+	PyObject* obj = PyDict_GetItemString(m_plugins, name);
+	if (obj) {
+		Py_INCREF(obj); // Increment reference count before returning
+		return obj;
+	}
+	Py_RETURN_NONE;
+}
+
+PyObject*
+AsyncioDAT::getPluginNames() const
+{
+	if (!m_plugins) {
+		return PyList_New(0);
+	}
+
+	PyObject* names = PyDict_Keys(m_plugins);
+	if (names) {
+		Py_INCREF(names); // Increment reference count before returning
+		return names;
+	}
+	return PyList_New(0);
+}
+
+void
+AsyncioDAT::clearPlugins()
+{
+	if (m_plugins) {
+		PyDict_Clear(m_plugins);
+		addStatusMessage("Cleared all plugins");
+	} else {
+		addStatusMessage("No plugins to clear");
+	}
+}
+
+bool
+AsyncioDAT::hasPlugin(const char* name) const
+{
+	if (!m_plugins || !name) {
+		return false;
+	}
+
+	PyObject* nameKey = PyUnicode_FromString(name);
+	int exists = PyDict_Contains(m_plugins, nameKey);
+	Py_DECREF(nameKey);
+	
+	return exists == 1;
 }
