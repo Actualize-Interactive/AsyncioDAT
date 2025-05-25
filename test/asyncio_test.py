@@ -55,6 +55,21 @@ async def error_prone_task():
     else:
         print("Task will fail...")
         raise Exception("Random failure occurred")
+    
+# Test 5: Set parameters on a COMP operator
+async def set_pars_task(comp, par_dict: dict | None = None, offset: float = 1.0):
+    """Set parameters on a COMP operator with staggered delays"""
+    if par_dict is None:
+        return
+    delay = 0.0
+    for par, value in par_dict.items():
+        await asyncio.sleep(offset)
+        par.val = value
+        delay = offset + delay
+        print(f"Setting parameter {par.name} to {value} with delay {delay}s")
+
+    print("All parameters set")
+    return "Parameters updated"
 
 # Utility functions for testing
 
@@ -195,6 +210,30 @@ def test_exception_handling():
     asyncio_op.add_task(success_task())
     print("Exception handling test tasks added")
 
+def test_set_pars():
+    """Test setting parameters on the AsyncioDAT operator"""
+    print("=== Testing Set Parameters ===")
+    
+    comp = op('test_set_pars')
+    if comp is None:
+        print("No operator found for set_pars test")
+        return
+
+    # reset parameters to default
+    comp.par.Float = comp.par.Float.default
+    comp.par.Int = comp.par.Int.default
+    comp.par.Str = comp.par.Str.default
+    comp.par.Toggle = comp.par.Toggle.default
+
+    par_values = {
+        comp.par.Float : 1.0,
+        comp.par.Int : 42,
+        comp.par.Str : "Hello, World!",
+        comp.par.Toggle : True
+    }   
+
+    asyncio_op.add_task(set_pars_task(comp, par_values, offset=0.5))
+
 # Main test function that can be called from TouchDesigner
 def run_all_tests():
     """Run comprehensive tests of AsyncioDAT functionality"""
@@ -223,6 +262,9 @@ def run_all_tests():
     # add_http_task()
     # print()
     
+    test_set_pars()
+    print()
+
     get_event_loop_info()
     print()
     

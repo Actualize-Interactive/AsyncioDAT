@@ -1,7 +1,8 @@
-#include "py_bindings.h"
+#include "asyncio_manager.h"
 #include <string>
 #include <iostream>
-#include <iostream>
+#include <memory>
+#include <chrono>
 
 namespace py
 {
@@ -28,14 +29,77 @@ PyGetSetDef getSets[] =
 };
 
 const char* pythonCallbacksDATStubs =
-"# AsyncioDAT Python Callbacks\n"
-"\n"
-"\n";
+R"(# AsyncioDAT Python Callbacks
+
+def on_initialize(asyncioDat, success):
+    \"\"\"Called when the AsyncioDAT is initialized.\"\"\"
+    pass
+
+def on_pre_shutdown(asyncioDat, success, info):
+    \"\"\"Called when the AsyncioDAT is shutdown.\"\"\"
+    pass
+
+def on_post_shutdown(asyncioDat, success, info):
+    \"\"\"Called after the AsyncioDAT has been shutdown.\"\"\"
+    pass
+
+)";
 
 
 
-// Global asyncio manager instance
+// Singleton manager with reference counting
+class AsyncioSingleton {
+private:
+    static AsyncioManager* s_instance;
+    static int s_refCount;
+
+public:
+    static AsyncioManager* getInstance() {
+        if (!s_instance) {
+            s_instance = new AsyncioManager();
+        }
+        s_refCount++;
+        return s_instance;
+    }
+
+    static void releaseInstance() {
+        s_refCount--;
+        if (s_refCount <= 0) {
+            if (s_instance) {
+                s_instance->shutdown();
+                delete s_instance;
+                s_instance = nullptr;
+            }
+            s_refCount = 0;
+        }
+    }
+
+    static int getRefCount() {
+        return s_refCount;
+    }
+};
+
+// Static member definitions
+AsyncioManager* AsyncioSingleton::s_instance = nullptr;
+int AsyncioSingleton::s_refCount = 0;
 AsyncioManager* g_asyncioManager = nullptr;
+
+
+void acquireSharedAsyncioManager()
+{
+    AsyncioSingleton::getInstance();
+}
+
+void releaseSharedAsyncioManager()
+{
+    AsyncioSingleton::releaseInstance();
+}
+
+int getAsyncioRefCount()
+{
+    return AsyncioSingleton::getRefCount();
+}
+
 
 // AsyncioManager Implementation
 AsyncioManager::AsyncioManager()
@@ -61,11 +125,12 @@ AsyncioManager::~AsyncioManager()
     shutdown();
 }
 
-bool AsyncioManager::initialize()
+bool AsyncioManager::initialize(const TD::OP_NodeInfo* nodeInfo)
 {
     if (m_initialized) {
         return true;
     }
+    m_nodeInfo = nodeInfo;
 
     // Import asyncio module
     m_asyncioModule = PyImport_ImportModule("asyncio");
@@ -130,7 +195,25 @@ bool AsyncioManager::initialize()
 
     m_initialized = true;
     m_loopRunning = true;  // Mark as running since we've set it as the current loop
-    std::cout << "Asyncio event loop initialized successfully" << std::endl;
+
+    
+    if (m_nodeInfo) {
+        // We'll only be adding one extra argument
+        PyObject* callback_args = m_nodeInfo->context->createArgumentsTuple(1, nullptr);
+        // The first argument is already set to the 'op' variable, so we set the second argument to our speed value
+        PyTuple_SET_ITEM(callback_args, 1, PyBool_FromLong(1));
+
+        PyObject *result = m_nodeInfo->context->callPythonCallback("on_initialize", callback_args, nullptr, nullptr);
+        // callPythonCallback doesn't take ownership of the args
+        Py_DECREF(callback_args);
+
+        // We own result now, so we need to Py_DECREF it unless we want to hold onto it
+        if (result)
+        {
+            Py_DECREF(result);
+        }
+    }
+    
     return true;
 }
 
@@ -185,6 +268,8 @@ bool AsyncioManager::processEvents()
     }
 
     try {
+        auto start = std::chrono::high_resolution_clock::now();
+
         // Implement the exact pattern from the working Python code:
         // 1. event_loop.call_soon(event_loop.stop)
         // 2. event_loop.run_forever()  
@@ -232,7 +317,14 @@ bool AsyncioManager::processEvents()
             return false;
         }
         Py_DECREF(runCompleteResult);
-        
+        m_processEventsCount++;
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed = end - start;
+
+        // Calculate elapsed time in seconds
+        // Note: This is not the same as the time taken by the event loop
+        m_lastProcessEventsTime = elapsed.count();
+
         return true;
     }
     catch (...) {
@@ -534,7 +626,7 @@ PyObject* getAsyncioInitialized(PyObject* self, void* closure)
 bool ensureAsyncioInitialized()
 {
     if (!g_asyncioManager) {
-        g_asyncioManager = new AsyncioManager();
+        g_asyncioManager = AsyncioSingleton::getInstance();
     }
     
     if (!g_asyncioManager->isRunning()) {
@@ -547,11 +639,25 @@ bool ensureAsyncioInitialized()
 void cleanupAsyncio()
 {
     if (g_asyncioManager) {
-        delete g_asyncioManager;
+        AsyncioSingleton::releaseInstance();
         g_asyncioManager = nullptr;
     }
 }
 
+uint32_t getProcessEventsCount()
+{
+    if (g_asyncioManager) {
+        return g_asyncioManager->getProcessEventsCount();
+    }
+    return 0;
+}
 
+double getLastProcessEventsTime()
+{
+    if (g_asyncioManager) {
+        return g_asyncioManager->getLastProcessEventsTime();
+    }
+    return 0.0;
+}
 
 } // namespace py
