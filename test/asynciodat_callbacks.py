@@ -20,7 +20,7 @@ class TestOnInitPlugin:
 
 def on_initialize(asyncioDat, success):
 	""""Called when the AsyncioDAT is initialized."""
-	print("Initialized:", success)
+	print("Initialized:", asyncioDat, type(asyncioDat))
 	try:
 		import grpc
 		print("imported grpc on initialze successfully!")

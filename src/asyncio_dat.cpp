@@ -75,8 +75,9 @@ AsyncioDAT::AsyncioDAT(const OP_NodeInfo* info)
 	, m_warning(nullptr)
 	, m_error(nullptr)
 	, m_asyncioInitialized(false)
-	, m_autoProcess(true)
+	, m_autoPoll(true)
 	, m_maxstatusrows(10)
+	, m_add_stop_task(false)
 	, m_asyncioModule(nullptr)
 	, m_eventLoop(nullptr)
 	, m_newEventLoop(nullptr)
@@ -91,8 +92,8 @@ AsyncioDAT::AsyncioDAT(const OP_NodeInfo* info)
 	, m_exceptionHandler(nullptr)
 	, m_plugins(nullptr)
 	, m_loopRunning(false)
-	, m_processEventsCount(0)
-	, m_lastProcessEventsTime(0.0)
+	, m_pollEventLoopCount(0)
+	, m_pollEventLoopDuration(0.0)
 {
 	prependPath("prepend_to_path.txt");
 	if (tryBecomeActiveInstance()) {
@@ -110,7 +111,7 @@ AsyncioDAT::getGeneralInfo(DAT_GeneralInfo* ginfo, const OP_Inputs* inputs, void
 {
 	// We want to cook every frame to process asyncio events
 	ginfo->cookEveryFrameIfAsked = true;
-	ginfo->cookEveryFrame = m_autoProcess;
+	ginfo->cookEveryFrame = m_autoPoll;
 }
 
 void
@@ -171,14 +172,16 @@ AsyncioDAT::execute(DAT_Output* output, const OP_Inputs* inputs, void* reserved1
 		shutdownAsyncio();
 	} 
 	
-	auto autoProcess = static_cast<bool>(inputs->getParInt("Autoprocess"));
-	if (m_autoProcess != autoProcess) {
-		m_autoProcess = autoProcess;
-		addStatusMessage("Auto process set to " + std::string(m_autoProcess ? "true" : "false"));
+	auto autoPoll = static_cast<bool>(inputs->getParInt("Autopoll"));
+	if (m_autoPoll != autoPoll) {
+		m_autoPoll = autoPoll;
+		addStatusMessage("Auto process set to " + std::string(m_autoPoll ? "true" : "false"));
 	}
 
-	if (m_autoProcess && m_asyncioInitialized) {
-		processAsyncioEvents();
+	m_add_stop_task = static_cast<bool>(inputs->getParInt("Addstoptask"));
+
+	if (m_autoPoll && m_asyncioInitialized) {
+		pollEventLoop();
 	}
 	makeTable(output);
 	
@@ -199,14 +202,14 @@ AsyncioDAT::getInfoCHOPChan(int32_t index, OP_InfoCHOPChan* chan, void* reserved
 		chan->name->setString("event_loop_active");
 		chan->value = static_cast<float>(m_asyncioInitialized ? 1.0f : 0.0f);
 	} else if (index == 1) {
-		chan->name->setString("event_loop_auto_process");
-		chan->value = static_cast<float>(m_autoProcess ? 1.0f : 0.0f);
+		chan->name->setString("event_loop_auto_poll");
+		chan->value = static_cast<float>(m_autoPoll ? 1.0f : 0.0f);
 	} else if (index == 2) {
-		chan->name->setString("event_loop_process_events_count");
-		chan->value = static_cast<float>(m_processEventsCount);
+		chan->name->setString("event_loop_poll_count");
+		chan->value = static_cast<float>(m_pollEventLoopCount);
 	} else {
-		chan->name->setString("event_loop_last_process_time");
-		chan->value = static_cast<float>(m_lastProcessEventsTime);
+		chan->name->setString("event_loop_poll_duration");
+		chan->value = static_cast<float>(m_pollEventLoopDuration);
 	}
 }
 
@@ -249,10 +252,21 @@ AsyncioDAT::setupParameters(OP_ParameterManager* manager, void* reserved1)
 	{
 		OP_NumericParameter np;
 		np.page = "Asyncio";
-		np.name = "Autoprocess";
-		np.label = "Auto Process";
-		np.defaultValues[0] = 1; 
-		
+		np.name = "Autopoll";
+		np.label = "Auto Poll";
+		np.defaultValues[0] = 1;
+
+		OP_ParAppendResult res = manager->appendToggle(np);
+		assert(res == OP_ParAppendResult::Success);
+	}
+
+	{
+		OP_NumericParameter np;
+		np.page = "Asyncio";
+		np.name = "Addstoptask";
+		np.label = "Add Stop Task";
+		np.defaultValues[0] = 0; // Default to not adding stop task
+
 		OP_ParAppendResult res = manager->appendToggle(np);
 		assert(res == OP_ParAppendResult::Success);
 	}
@@ -441,10 +455,9 @@ AsyncioDAT::initializeAsyncio()
 		PyObject* callback_args = m_nodeInfo->context->createArgumentsTuple(1, nullptr);
 		PyTuple_SET_ITEM(callback_args, 1, PyBool_FromLong(1));
 
-		// Try to cook the operator before calling this callback because the first 
-		// time this is called the callbacksDAT doesn't appear to be loaded. It seems
-		// that the callbacksDAT itself is not yet initialized when this is called...
-		// bypassing this for now since it doesn't work...
+		// This won't work when called from the constructor because the callbacksDAT
+		// is not yet initialized... Bypassing since we don't really need to cook before
+		// calling the callback.
 		if (false) {
 			// first argument self
 			PyObject* self = PyTuple_GetItem(callback_args, 0);
@@ -556,7 +569,7 @@ AsyncioDAT::shutdownAsyncio()
 }
 
 bool
-AsyncioDAT::processAsyncioEvents()
+AsyncioDAT::pollEventLoop()
 {
 	if (!m_asyncioInitialized || !m_eventLoop) {
 		return false;
@@ -565,25 +578,29 @@ AsyncioDAT::processAsyncioEvents()
 	try {
 		auto start = std::chrono::high_resolution_clock::now();
 
-		// Schedule the loop to stop after processing ready tasks
-		PyObject* stopArgs = PyTuple_Pack(1, m_stop);
-		PyObject* callSoonResult = PyObject_CallObject(m_callSoon, stopArgs);
-		Py_DECREF(stopArgs);
-		
-		if (!callSoonResult) {
-			PyErr_Clear();
-			return false;
+		if (m_add_stop_task)
+		{
+			// Schedule the loop to stop after processing ready tasks
+			PyObject* stopArgs = PyTuple_Pack(1, m_stop);
+			PyObject* callSoonResult = PyObject_CallObject(m_callSoon, stopArgs);
+			Py_DECREF(stopArgs);
+			
+			if (!callSoonResult) {
+				PyErr_Clear();
+				return false;
+			}
+			Py_DECREF(callSoonResult);
+			
+			// Run the event loop - it will process ready tasks then stop
+			PyObject* runForeverResult = PyObject_CallObject(m_runForever, nullptr);
+			if (!runForeverResult) {
+				PyErr_Clear();
+				return false;
+			}
+			Py_DECREF(runForeverResult);
 		}
-		Py_DECREF(callSoonResult);
 		
-		// Run the event loop - it will process ready tasks then stop
-		PyObject* runForeverResult = PyObject_CallObject(m_runForever, nullptr);
-		if (!runForeverResult) {
-			PyErr_Clear();
-			return false;
-		}
-		Py_DECREF(runForeverResult);
-		
+
 		// Process any remaining tasks with sleep(0)
 		PyObject* sleepArgs = PyTuple_Pack(1, PyFloat_FromDouble(0.0));
 		PyObject* sleepCoro = PyObject_CallObject(m_sleep, sleepArgs);
@@ -605,10 +622,10 @@ AsyncioDAT::processAsyncioEvents()
 		}
 		Py_DECREF(runCompleteResult);
 		
-		m_processEventsCount++;
+		m_pollEventLoopCount++;
 		auto end = std::chrono::high_resolution_clock::now();
 		std::chrono::duration<double> elapsed = end - start;
-		m_lastProcessEventsTime = elapsed.count() * 1000.0; // Convert to milliseconds
+		m_pollEventLoopDuration = elapsed.count() * 1000.0; // Convert to milliseconds
 		return true;
 	}
 	catch (...) {
@@ -1047,9 +1064,8 @@ AsyncioDAT::executeOnCreateCallback(const std::string& filepath)
 		return false;
 	}
 
-	// Create globals and locals dictionaries
+	// Create globals dictionarie
 	PyObject* globals = PyDict_New();
-	PyObject* locals = PyDict_New();
 
 	// Add builtins to globals
 	PyObject* builtins = PyImport_ImportModule("builtins");
@@ -1068,7 +1084,6 @@ AsyncioDAT::executeOnCreateCallback(const std::string& filepath)
 		addStatusMessage("Failed to compile startup Python file: " + filepath);
 		PyErr_Print();
 		Py_DECREF(globals);
-		Py_DECREF(locals);
 		return false;
 	}
 
@@ -1080,7 +1095,6 @@ AsyncioDAT::executeOnCreateCallback(const std::string& filepath)
 		addStatusMessage("Failed to execute startup Python file: " + filepath);
 		PyErr_Print();
 		Py_DECREF(globals);
-		Py_DECREF(locals);
 		return false;
 	}
 	Py_DECREF(result);
@@ -1090,16 +1104,14 @@ AsyncioDAT::executeOnCreateCallback(const std::string& filepath)
 	if (!onCreateFunc || !PyCallable_Check(onCreateFunc)) {
 		addStatusMessage("No callable 'on_create' function found in: " + filepath);
 		Py_DECREF(globals);
-		Py_DECREF(locals);
 		return false;
 	}
 
 	// Create a Python wrapper object with plugin methods
-	PyObject* wrapper = createPythonWrapper();
+	PyObject* wrapper = createAsyncioDATInterface();
 	if (!wrapper) {
 		addStatusMessage("Failed to create Python wrapper for on_create callback");
 		Py_DECREF(globals);
-		Py_DECREF(locals);
 		return false;
 	}
 
@@ -1113,25 +1125,23 @@ AsyncioDAT::executeOnCreateCallback(const std::string& filepath)
 		addStatusMessage("Error calling on_create function from: " + filepath);
 		PyErr_Print();
 		Py_DECREF(globals);
-		Py_DECREF(locals);
 		return false;
 	}
 
 	Py_DECREF(callResult);
 	Py_DECREF(globals);
-	Py_DECREF(locals);
 
 	addStatusMessage("Successfully called on_create from: " + filepath);
 	return true;
 }
 
 PyObject*
-AsyncioDAT::createPythonWrapper()
+AsyncioDAT::createAsyncioDATInterface()
 {
 	// Create a simple wrapper class that calls the global Python functions
 	const char* wrapperCode = 
 R"(
-class AsyncioDATWrapper:
+class AsyncioDATInterface:
     """Simple wrapper that provides access to AsyncioDAT plugin methods"""
     
     def __init__(self, instance_ptr):
@@ -1181,7 +1191,7 @@ class AsyncioDATWrapper:
         """Check if asyncio is running"""
         return py_isAsyncioRunning()
 
-AsyncioDATWrapper
+AsyncioDATInterface
 )";
 
 	PyObject* globals = PyDict_New();
@@ -1246,9 +1256,9 @@ AsyncioDATWrapper
 	Py_DECREF(result);
 
 	// Get the wrapper class
-	PyObject* wrapperClass = PyDict_GetItemString(locals, "AsyncioDATWrapper");
+	PyObject* wrapperClass = PyDict_GetItemString(locals, "AsyncioDATInterface");
 	if (!wrapperClass || !PyCallable_Check(wrapperClass)) {
-		addStatusMessage("Failed to get AsyncioDATWrapper class");
+		addStatusMessage("Failed to get AsyncioDATInterface class");
 		Py_DECREF(globals);
 		Py_DECREF(locals);
 		return nullptr;
@@ -1266,7 +1276,7 @@ AsyncioDATWrapper
 	Py_DECREF(locals);
 
 	if (!wrapper) {
-		addStatusMessage("Failed to create AsyncioDATWrapper instance");
+		addStatusMessage("Failed to create AsyncioDATInterface instance");
 		PyErr_Print();
 		return nullptr;
 	}

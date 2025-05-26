@@ -27,7 +27,7 @@ extern "C" {
 // Python C API Method Implementations
 PyObject* py_initializeAsyncio(PyObject* self, PyObject* args);
 PyObject* py_shutdownAsyncio(PyObject* self, PyObject* args);
-PyObject* py_processAsyncioEvents(PyObject* self, PyObject* args);
+PyObject* py_pollEventLoop(PyObject* self, PyObject* args);
 PyObject* py_getEventLoop(PyObject* self, PyObject* args);
 PyObject* py_addAsyncTask(PyObject* self, PyObject* args);
 PyObject* py_createAsyncTask(PyObject* self, PyObject* args);

@@ -26,7 +26,7 @@ def on_create(asyncio_dat):
     print('on_create called with asyncio_dat:', asyncio_dat)
     
     if grpc is not None:
-        print('gRPC is available, import work!')
+        print('gRPC is available, import worked!')
     else:
         print('gRPC is not available, cannot set up channel and stub.')
         return

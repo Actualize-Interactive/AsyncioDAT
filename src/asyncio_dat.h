@@ -33,7 +33,7 @@ public:
 	// Public methods for Python integration
 	bool					 initializeAsyncio();
 	void					 shutdownAsyncio();
-	bool					 processAsyncioEvents();
+	bool					 pollEventLoop();
 	void 				   	 cancelAllTasks();
 	PyObject*				 getEventLoop();
 	bool					 addTask(PyObject* coro);
@@ -42,9 +42,9 @@ public:
 	bool					 isAsyncioInitialized() const { return m_asyncioInitialized; }
 	bool					 isLoopRunning() const { return m_loopRunning; }
 	int						 getReadyCallbackCount();
-	uint32_t				 getProcessEventsCount() const { return m_processEventsCount; }
-	double					 getLastProcessEventsTime() const { return m_lastProcessEventsTime; }
-	
+	uint32_t				 getPollEventLoopCount() const { return m_pollEventLoopCount; }
+	double					 getLastPollEventLoopDuration() const { return m_pollEventLoopDuration; }
+
 	bool 					 addPlugin(const char* name, PyObject* obj);
 	bool 					 removePlugin(const char* name);
 	PyObject* 				 getPlugin(const char* name) const;
@@ -54,7 +54,7 @@ public:
 	PyObject*				 getPluginsDict() const { return m_plugins; }
 
 	bool					 executeOnCreateCallback(const std::string& filepath);
-	PyObject*				 createPythonWrapper();
+	PyObject*				 createAsyncioDATInterface();
 
 private:
 	const OP_NodeInfo*		 m_nodeInfo;
@@ -63,9 +63,10 @@ private:
 	std::deque<std::string>  m_status_messages;
 
 	inline static bool       s_called_on_startup = false;
-	bool      				 m_autoProcess;
+	bool      				 m_autoPoll;
 	bool      				 m_asyncioInitialized;
 	int32_t    				 m_maxstatusrows;	
+	bool 					 m_add_stop_task;
 
 	PyObject* 				 m_asyncioModule;
 	PyObject* 				 m_eventLoop;
@@ -82,8 +83,8 @@ private:
 	PyObject* 				 m_plugins;
 
 	bool     				 m_loopRunning;
-	uint32_t 				 m_processEventsCount;
-	double    				 m_lastProcessEventsTime;
+	uint32_t 				 m_pollEventLoopCount;
+	double    				 m_pollEventLoopDuration;
 
 
 

@@ -5,7 +5,7 @@ PyMethodDef py_methods[] =
 {
     {"initialize_asyncio", py_initializeAsyncio, METH_NOARGS, "Initialize the asyncio event loop"},
     {"shutdown_asyncio", py_shutdownAsyncio, METH_NOARGS, "Shutdown the asyncio event loop"},
-    {"process_events", py_processAsyncioEvents, METH_NOARGS, "Process asyncio events for one frame"},
+    {"poll_event_loop", py_pollEventLoop, METH_NOARGS, "Process asyncio events ready in the event loop"},
     {"get_event_loop", py_getEventLoop, METH_NOARGS, "Get the current event loop"},
     {"add_task", py_addAsyncTask, METH_VARARGS, "Add a coroutine as a task to the event loop"},    
     {"create_task", py_createAsyncTask, METH_VARARGS, "Create a task from a coroutine"},
@@ -79,7 +79,7 @@ PyObject* py_shutdownAsyncio(PyObject* self, PyObject* args)
     Py_RETURN_NONE;
 }
 
-PyObject* py_processAsyncioEvents(PyObject* self, PyObject* args)
+PyObject* py_pollEventLoop(PyObject* self, PyObject* args)
 {
     // if ((AsyncioDAT*)self != g_activeAsyncioInstance) {
     //     PyErr_SetString(PyExc_RuntimeError, "This method can only be called from the active AsyncioDAT instance");
@@ -87,7 +87,7 @@ PyObject* py_processAsyncioEvents(PyObject* self, PyObject* args)
     // }
 
     if (g_activeAsyncioInstance) {
-        bool success = g_activeAsyncioInstance->processAsyncioEvents();
+        bool success = g_activeAsyncioInstance->pollEventLoop();
         return PyBool_FromLong(success ? 1 : 0);
     }
     Py_RETURN_FALSE;
