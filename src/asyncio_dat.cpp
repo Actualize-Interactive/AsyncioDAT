@@ -479,19 +479,47 @@ void
 AsyncioDAT::shutdownAsyncio()
 {
 	// Clean up plugins dictionary
-	clearPlugins();
+   	clearPlugins();
 	Py_XDECREF(m_plugins);
 	m_plugins = nullptr;
 
-	if (m_loopRunning && m_eventLoop && m_stop) {
-		PyObject* args = PyTuple_New(0);
-		PyObject* result = PyObject_CallObject(m_stop, args);
-		Py_DECREF(args);
-		if (result) {
-			Py_DECREF(result);
-		}
-		m_loopRunning = false;
-	}
+    if (m_loopRunning && m_eventLoop) {
+        // Try to schedule stop on the loop instead of calling it directly
+        if (m_callSoon && m_stop) {
+            PyObject* stopArgs = PyTuple_Pack(1, m_stop);
+            PyObject* callSoonResult = PyObject_CallObject(m_callSoon, stopArgs);
+            Py_DECREF(stopArgs);
+            if (callSoonResult) {
+                Py_DECREF(callSoonResult);
+            }
+            
+            // Give the loop a chance to process the stop callback
+            if (m_runForever) {
+                PyObject* runResult = PyObject_CallObject(m_runForever, nullptr);
+                if (runResult) {
+                    Py_DECREF(runResult);
+                }
+            }
+        }
+        
+        // If that didn't work, try the more aggressive approach
+        if (m_loopRunning && m_stop) {
+            // Set a timeout to prevent indefinite hanging
+            PyObject* args = PyTuple_New(0);
+            PyObject* result = PyObject_CallObject(m_stop, args);
+            Py_DECREF(args);
+            if (result) {
+                Py_DECREF(result);
+            }
+        }
+        
+        m_loopRunning = false;
+    }
+
+    // Cancel any pending tasks before cleanup
+    if (m_eventLoop) {
+        cancelAllTasks();
+    }
 
 	// Clean up Python objects
 	Py_XDECREF(m_runForever);
@@ -587,6 +615,52 @@ AsyncioDAT::processAsyncioEvents()
 		PyErr_Clear();
 		return false;
 	}
+}
+
+void
+AsyncioDAT::cancelAllTasks()
+{
+    if (!m_eventLoop) {
+        return;
+    }
+
+    try {
+        // Get all tasks from the event loop
+        PyObject* asyncioModule = PyImport_ImportModule("asyncio");
+        if (asyncioModule) {
+            PyObject* allTasks = PyObject_GetAttrString(asyncioModule, "all_tasks");
+            if (allTasks) {
+                PyObject* loopArg = PyTuple_Pack(1, m_eventLoop);
+                PyObject* tasks = PyObject_CallObject(allTasks, loopArg);
+                Py_DECREF(loopArg);
+                
+                if (tasks && PySet_Check(tasks)) {
+                    PyObject* iterator = PyObject_GetIter(tasks);
+                    if (iterator) {
+                        PyObject* task;
+                        while ((task = PyIter_Next(iterator))) {
+                            // Cancel each task
+                            PyObject* cancel = PyObject_GetAttrString(task, "cancel");
+                            if (cancel) {
+                                PyObject* cancelResult = PyObject_CallObject(cancel, nullptr);
+                                Py_XDECREF(cancelResult);
+                                Py_DECREF(cancel);
+                            }
+                            Py_DECREF(task);
+                        }
+                        Py_DECREF(iterator);
+                    }
+                }
+                Py_XDECREF(tasks);
+                Py_DECREF(allTasks);
+            }
+            Py_DECREF(asyncioModule);
+        }
+        PyErr_Clear(); // Clear any errors from the cancellation process
+    }
+    catch (...) {
+        PyErr_Clear();
+    }
 }
 
 PyObject*

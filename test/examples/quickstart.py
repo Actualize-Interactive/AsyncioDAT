@@ -10,7 +10,7 @@ print("=" * 40)
 
 # Make sure we have the AsyncioDAT operator
 try:
-    asyncio_dat = op('Asyncio2')
+    asyncio_dat = op('Asyncio1')
     print("✓ Found AsyncioDAT operator")
 except:
     print("✗ AsyncioDAT operator 'Asyncio1' not found!")

@@ -34,6 +34,7 @@ public:
 	bool					 initializeAsyncio();
 	void					 shutdownAsyncio();
 	bool					 processAsyncioEvents();
+	void 				   	 cancelAllTasks();
 	PyObject*				 getEventLoop();
 	bool					 addTask(PyObject* coro);
 	PyObject*				 createAsyncTask(PyObject* coro);

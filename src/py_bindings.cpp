@@ -25,7 +25,7 @@ PyGetSetDef py_getSets[] =
     {"loop_running", py_getLoopRunning, nullptr, "Whether the event loop is running", nullptr},
     {"asyncio_initialized", py_getAsyncioInitialized, nullptr, "Whether asyncio is initialized", nullptr},
     {"plugin_names", py_getPluginNames, nullptr, "Get names of all plugins", nullptr},
-    {"plugins", py_getPlugins, nullptr, "Get all plugins", nullptr},
+    {"plugins", py_getPlugins, nullptr, "Plugin accessor", nullptr},
     {0}	// Sentinel
 };
 
