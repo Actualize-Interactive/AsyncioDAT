@@ -1,6 +1,7 @@
 #include "asyncio_dat.h"
 #include "py_bindings.h"
 #include <iostream>
+#include <format>
 #include <chrono>
 #include <fstream>
 
@@ -94,11 +95,8 @@ AsyncioDAT::AsyncioDAT(const OP_NodeInfo* info)
 	, m_lastProcessEventsTime(0.0)
 {
 	prependPath("prepend_to_path.txt");
-	// Try to become the active instance on creation
 	if (tryBecomeActiveInstance()) {
 		initializeAsyncio();
-	} else {
-		addStatusMessage("Another AsyncioDAT instance is managing the event loop. This instance is inactive.");
 	}
 }
 
@@ -122,7 +120,7 @@ AsyncioDAT::makeTable(DAT_Output* output)
 	output->setTableSize(static_cast<int32_t>(m_status_messages.size()), 1);
 
 	for (int32_t i = 0; i < m_status_messages.size(); i++) {
-		output->setCellString(static_cast<int32_t>(i), 0, m_status_messages[i].c_str());
+		output->setCellString(static_cast<int32_t>(m_status_messages.size() - i - 1), 0, m_status_messages[i].c_str());
 	}
 }
 
@@ -135,6 +133,7 @@ AsyncioDAT::addStatusMessage(const std::string& message)
     while (m_status_messages.size() > m_maxstatusrows) {
         m_status_messages.pop_front();
     }
+	std::cout << "AsyncioDAT Status: " << message << std::endl;
 }
 
 void
@@ -158,36 +157,31 @@ AsyncioDAT::execute(DAT_Output* output, const OP_Inputs* inputs, void* reserved1
 
 	m_warning = nullptr;
 	m_error = nullptr;
+	m_maxstatusrows = inputs->getParInt("Maxstatusrows");
 
 	auto active = static_cast<bool>(inputs->getParInt("Active"));
 
 	if (active && !m_asyncioInitialized) {
 		if (!initializeAsyncio()) {
-			m_error = "Another AsyncioDAT instance is managing the event loop. This instance cannot initialize.";
-			return;
+			if (m_status_messages.empty() || strcmp(m_warning, m_status_messages.back().c_str()) != 0) {
+				addStatusMessage(m_warning);
+			}
 		}
 	} else if (!active && m_asyncioInitialized) {
 		shutdownAsyncio();
-	}
-	if (!m_asyncioInitialized) {
-		output->setOutputDataType(DAT_OutDataType::Text);
-		output->setText("Asyncio event loop is not initialized.");
-		return;
-	}
-
-	m_maxstatusrows = inputs->getParInt("Maxstatusrows");
+	} 
+	
 	auto autoProcess = static_cast<bool>(inputs->getParInt("Autoprocess"));
 	if (m_autoProcess != autoProcess) {
 		m_autoProcess = autoProcess;
 		addStatusMessage("Auto process set to " + std::string(m_autoProcess ? "true" : "false"));
 	}
 
-
 	if (m_autoProcess && m_asyncioInitialized) {
 		processAsyncioEvents();
 	}
-
 	makeTable(output);
+	
 }
 
 int32_t
@@ -323,7 +317,7 @@ AsyncioDAT::tryBecomeActiveInstance()
 {
 	if (getActiveAsyncioInstance() == nullptr) {
 		setActiveAsyncioInstance(this);
-		std::cout << "AsyncioDAT instance is now the active instance." << std::endl;
+		addStatusMessage(std::format("AsyncioDAT instance {} is now the active instance.", static_cast<void*>(this)));
 		return true;
 	}
 	return getActiveAsyncioInstance() == this;
@@ -341,8 +335,7 @@ bool
 AsyncioDAT::initializeAsyncio()
 {
 	if (!tryBecomeActiveInstance()) {
-		addStatusMessage("Cannot initialize: Another AsyncioDAT instance is managing the event loop");
-		m_error = "Another AsyncioDAT instance is managing the event loop";
+		m_warning = "Cannot initialize: Another AsyncioDAT instance is managing the event loop";
 		return false;
 	}
 
@@ -442,7 +435,6 @@ AsyncioDAT::initializeAsyncio()
 		s_first_init = false;
 	}
 
-	addStatusMessage("Asyncio event loop initialized successfully");
 
 	// Call Python callback
 	if (m_nodeInfo) {
@@ -453,7 +445,7 @@ AsyncioDAT::initializeAsyncio()
 		// time this is called the callbacksDAT doesn't appear to be loaded. It seems
 		// that the callbacksDAT itself is not yet initialized when this is called...
 		// bypassing this for now since it doesn't work...
-		if (true) {
+		if (false) {
 			// first argument self
 			PyObject* self = PyTuple_GetItem(callback_args, 0);
 			if (!self) {
@@ -463,7 +455,7 @@ AsyncioDAT::initializeAsyncio()
 				Py_DECREF(callback_args);
 				return false;
 			}
-			Py_INCREF(self); // Increment reference count for self
+			Py_INCREF(self);
 
 			PY_Struct* me = (PY_Struct*)self;
 			PY_GetInfo info;
@@ -474,14 +466,12 @@ AsyncioDAT::initializeAsyncio()
 
 		result = m_nodeInfo->context->callPythonCallback("on_initialize", callback_args, nullptr, nullptr);
 		Py_DECREF(callback_args);
-
 		if (result) {
 			Py_DECREF(result);
 		}
 	}
 
-	std::cout << "Asyncio event loop initialized successfully" << std::endl;
-
+	addStatusMessage("Asyncio event loop initialized successfully");
 	return true;
 }
 
@@ -949,7 +939,6 @@ AsyncioDAT::prependPath(const std::string& filepath)
             // Path doesn't exist, prepend it (insert at index 0)
             if (PyList_Insert(sysPath, 0, pathStr) == 0) {
                 addStatusMessage("Prepended to sys.path: " + entry);
-                std::cout << "Prepended to sys.path: " << entry << std::endl;
             } else {
                 addStatusMessage("Failed to prepend to sys.path: " + entry);
                 PyErr_Clear();

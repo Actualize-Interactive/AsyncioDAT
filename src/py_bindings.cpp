@@ -280,7 +280,7 @@ static PyObject* py_createPluginAttrAccessor(PyObject* self, PyObject* args)
 {
     const char* accessorCode = 
 R"(
-class _AttrAccessor:
+class Plugins:
     def __init__(self, asyncio_dat):
         self._asyncio_dat = asyncio_dat
     
@@ -307,7 +307,7 @@ class _AttrAccessor:
         names = self._asyncio_dat.get_plugin_names
         return list(names) if names else []
 
-_AttrAccessor
+Plugins
 )";
 
     PyObject* globals = PyDict_New();
@@ -318,12 +318,12 @@ _AttrAccessor
         PyDict_SetItemString(globals, "__builtins__", builtins);
         Py_DECREF(builtins);
     }
-    
-    PyObject* compiled = Py_CompileString(accessorCode, "<attr_accessor>", Py_file_input);
+
+    PyObject* compiled = Py_CompileString(accessorCode, "<plugin_accessor>", Py_file_input);
     if (compiled) {
         PyObject* result = PyEval_EvalCode(compiled, globals, locals);
         if (result) {
-            PyObject* accessorClass = PyDict_GetItemString(locals, "_AttrAccessor");
+            PyObject* accessorClass = PyDict_GetItemString(locals, "Plugins");
             if (accessorClass) {
                 Py_INCREF(accessorClass);
                 Py_DECREF(result);

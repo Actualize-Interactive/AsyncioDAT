@@ -1,4 +1,4 @@
-# AsyncioDAT Quick Start Example
+﻿# AsyncioDAT Quick Start Example
 # Copy this code into a textDAT in TouchDesigner and run it
 
 import asyncio
@@ -10,7 +10,7 @@ print("=" * 40)
 
 # Make sure we have the AsyncioDAT operator
 try:
-    asyncio_dat = op('Asyncio1')
+    asyncio_dat = op('Asyncio2')
     print("✓ Found AsyncioDAT operator")
 except:
     print("✗ AsyncioDAT operator 'Asyncio1' not found!")
