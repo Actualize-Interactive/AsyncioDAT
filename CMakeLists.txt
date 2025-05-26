@@ -50,6 +50,7 @@ set_target_properties(asyncio_dat PROPERTIES
 if(SUPPRESS_NOT_REFERENCED_WARNINGS)
     if(MSVC)
         target_compile_options(asyncio_dat PRIVATE /wd4100 /wd4189)
+        target_compile_definitions(asyncio_dat PRIVATE _CRT_SECURE_NO_WARNINGS)
     endif()
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         target_compile_options(asyncio_dat PRIVATE -Wno-unused-parameter -Wno-unused-variable)  

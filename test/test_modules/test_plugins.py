@@ -1,6 +1,4 @@
 import asyncio
-import weakref
-import gc
 
 def get_asyncio_dat():
     """Get the AsyncioDAT operator instance."""
@@ -28,13 +26,13 @@ class AsyncPlugin:
     
     async def async_increment(self, amount=1):
         """Async method that increments counter."""
-        await asyncio.sleep(0)  # Yield control
+        await asyncio.sleep(2)  # Yield control
         self.counter += amount
         return self.counter
-    
+
     async def async_fetch_data(self, data_id):
         """Simulate async data fetching."""
-        await asyncio.sleep(0.1)  # Simulate network delay
+        await asyncio.sleep(2.1)  # Simulate network delay
         result = f"data_{data_id}_{self.counter}"
         self.results.append(result)
         return result
@@ -339,8 +337,9 @@ def test_plugin_async_functionality():
     
     # Test 1: Simple async increment - use frame counting instead of time.sleep
     async def test_simple_increment():
-        await asyncio.sleep(0.1)  # Allow a few frames to pass
         result = await retrieved.async_increment(5)
+        assert_equal(result, 5, "Async increment should return 5")
+        print(f"Async test_simple_increment result: {result}")
         return result
     
     # Create task and let Auto Process handle it

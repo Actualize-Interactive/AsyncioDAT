@@ -43,16 +43,16 @@ public:
 	int						 getReadyCallbackCount();
 	uint32_t				 getProcessEventsCount() const { return m_processEventsCount; }
 	double					 getLastProcessEventsTime() const { return m_lastProcessEventsTime; }
-
+	
 	bool 					 addPlugin(const char* name, PyObject* obj);
 	bool 					 removePlugin(const char* name);
 	PyObject* 				 getPlugin(const char* name) const;
 	PyObject* 				 getPluginNames() const;
 	void					 clearPlugins();
 	bool					 hasPlugin(const char* name) const;
-
-	// For Python bindings access
 	PyObject*				 getPluginsDict() const { return m_plugins; }
+
+
 
 private:
 	const OP_NodeInfo*		 m_nodeInfo;
@@ -77,21 +77,21 @@ private:
 	PyObject* 				 m_stop;
 	PyObject* 				 m_runForever;
 	PyObject* 				 m_exceptionHandler;
+	PyObject* 				 m_plugins;
+
 	bool     				 m_loopRunning;
 	uint32_t 				 m_processEventsCount;
 	double    				 m_lastProcessEventsTime;
 
-public:
-	PyObject* 				 m_plugins;  // Made public for Python bindings access
 
-private:
+
 	void					 makeTable(DAT_Output* output);
 	void					 addStatusMessage(const std::string& message);
 	bool					 createExceptionHandler();
 	bool					 tryBecomeActiveInstance();
 	void					 releaseActiveInstance();
 
-
+	void					 prependPath(const std::string& filepath);
 
 };
 

@@ -260,17 +260,7 @@ PyObject* py_hasPlugin(PyObject* self, PyObject* args)
         return nullptr;
     }
     
-    // Check if plugin exists by seeing if the key exists in the dictionary
-    if (!g_activeAsyncioInstance->m_plugins) {
-        Py_RETURN_FALSE;
-    }
-    
-    int exists = PyDict_Contains(g_activeAsyncioInstance->m_plugins, PyUnicode_FromString(name));
-    if (exists == -1) {
-        // Error occurred
-        return nullptr;
-    }
-    
+    auto exists = g_activeAsyncioInstance->hasPlugin(name);
     return PyBool_FromLong(exists ? 1 : 0);
 }
 

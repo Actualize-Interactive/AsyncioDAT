@@ -2,6 +2,9 @@
 #include "py_bindings.h"
 #include <iostream>
 #include <chrono>
+#include <fstream>
+
+
 
 extern "C"
 {
@@ -22,7 +25,7 @@ FillDATPluginInfo(DAT_PluginInfo *info)
 	info->customOPInfo.opLabel->setString("Asyncio DAT");
 
 	// Will be turned into a 3 letter icon on the nodes
-	info->customOPInfo.opIcon->setString("ASY");
+	info->customOPInfo.opIcon->setString("AIO");
 
 	// Information about the author of this OP
 	info->customOPInfo.authorName->setString("Keith Lostracco");
@@ -72,6 +75,7 @@ AsyncioDAT::AsyncioDAT(const OP_NodeInfo* info)
 	, m_error(nullptr)
 	, m_asyncioInitialized(false)
 	, m_autoProcess(true)
+	, m_maxstatusrows(10)
 	, m_asyncioModule(nullptr)
 	, m_eventLoop(nullptr)
 	, m_newEventLoop(nullptr)
@@ -84,11 +88,12 @@ AsyncioDAT::AsyncioDAT(const OP_NodeInfo* info)
 	, m_stop(nullptr)
 	, m_runForever(nullptr)
 	, m_exceptionHandler(nullptr)
+	, m_plugins(nullptr)
 	, m_loopRunning(false)
 	, m_processEventsCount(0)
 	, m_lastProcessEventsTime(0.0)
-	, m_plugins(nullptr)
 {
+	prependPath("prepend_to_path.txt");
 	// Try to become the active instance on creation
 	if (tryBecomeActiveInstance()) {
 		initializeAsyncio();
@@ -117,10 +122,7 @@ AsyncioDAT::makeTable(DAT_Output* output)
 	output->setTableSize(static_cast<int32_t>(m_status_messages.size()), 1);
 
 	for (int32_t i = 0; i < m_status_messages.size(); i++) {
-		output->setCellString(static_cast<int32_t>(m_status_messages.size() - i - 1)
-			, 0
-			, m_status_messages[i].c_str()
-		);
+		output->setCellString(static_cast<int32_t>(i), 0, m_status_messages[i].c_str());
 	}
 }
 
@@ -174,6 +176,12 @@ AsyncioDAT::execute(DAT_Output* output, const OP_Inputs* inputs, void* reserved1
 	}
 
 	m_maxstatusrows = inputs->getParInt("Maxstatusrows");
+	auto autoProcess = static_cast<bool>(inputs->getParInt("Autoprocess"));
+	if (m_autoProcess != autoProcess) {
+		m_autoProcess = autoProcess;
+		addStatusMessage("Auto process set to " + std::string(m_autoProcess ? "true" : "false"));
+	}
+
 
 	if (m_autoProcess && m_asyncioInitialized) {
 		processAsyncioEvents();
@@ -249,8 +257,8 @@ AsyncioDAT::setupParameters(OP_ParameterManager* manager, void* reserved1)
 		np.page = "Asyncio";
 		np.name = "Autoprocess";
 		np.label = "Auto Process";
-		np.defaultValues[0] = 1; // Default to enabled
-
+		np.defaultValues[0] = 1; 
+		
 		OP_ParAppendResult res = manager->appendToggle(np);
 		assert(res == OP_ParAppendResult::Success);
 	}
@@ -552,7 +560,7 @@ AsyncioDAT::processAsyncioEvents()
 		m_processEventsCount++;
 		auto end = std::chrono::high_resolution_clock::now();
 		std::chrono::duration<double> elapsed = end - start;
-		m_lastProcessEventsTime = elapsed.count();
+		m_lastProcessEventsTime = elapsed.count() * 1000.0; // Convert to milliseconds
 		return true;
 	}
 	catch (...) {
@@ -834,4 +842,95 @@ AsyncioDAT::hasPlugin(const char* name) const
 	Py_DECREF(nameKey);
 	
 	return exists == 1;
+}
+
+void
+AsyncioDAT::prependPath(const std::string& filepath)
+{
+    std::ifstream file(filepath);
+    
+    if (!file.is_open()) {
+        addStatusMessage("Could not open " + filepath);
+        return;
+    }
+
+    std::vector<std::string> pathEntries;
+    std::string line;
+    
+    // Read all lines from the file
+    while (std::getline(file, line)) {
+        // Trim whitespace
+        line.erase(0, line.find_first_not_of(" \t\r\n"));
+
+        // Skip lines that start with '#' or are empty
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+
+        line.erase(line.find_last_not_of(" \t\r\n") + 1);
+        
+        if (!line.empty()) {
+            pathEntries.push_back(line);
+        }
+    }
+    file.close();
+
+    if (pathEntries.empty()) {
+        addStatusMessage("No valid path entries found in prepend_to_path.txt");
+        return;
+    }
+
+    // Get sys module
+    PyObject* sysModule = PyImport_ImportModule("sys");
+    if (!sysModule) {
+        addStatusMessage("Failed to import sys module");
+        PyErr_Clear();
+        return;
+    }
+
+    // Get sys.path list
+    PyObject* sysPath = PyObject_GetAttrString(sysModule, "path");
+    if (!sysPath || !PyList_Check(sysPath)) {
+        addStatusMessage("Failed to get sys.path");
+        Py_DECREF(sysModule);
+        PyErr_Clear();
+        return;
+    }
+
+    // Prepend each path entry to sys.path if not already present
+    for (const auto& entry : pathEntries) {
+        PyObject* pathStr = PyUnicode_FromString(entry.c_str());
+        if (!pathStr) {
+            addStatusMessage("Failed to create string for path: " + entry);
+            continue;
+        }
+
+        // Check if path already exists in sys.path
+        int contains = PySequence_Contains(sysPath, pathStr);
+        if (contains == -1) {
+            // Error occurred
+            addStatusMessage("Error checking if path exists: " + entry);
+            Py_DECREF(pathStr);
+            PyErr_Clear();
+            continue;
+        }
+
+        if (contains == 0) {
+            // Path doesn't exist, prepend it (insert at index 0)
+            if (PyList_Insert(sysPath, 0, pathStr) == 0) {
+                addStatusMessage("Prepended to sys.path: " + entry);
+                std::cout << "Prepended to sys.path: " << entry << std::endl;
+            } else {
+                addStatusMessage("Failed to prepend to sys.path: " + entry);
+                PyErr_Clear();
+            }
+        } else {
+            addStatusMessage("Path already in sys.path: " + entry);
+        }
+
+        Py_DECREF(pathStr);
+    }
+
+    Py_DECREF(sysPath);
+    Py_DECREF(sysModule);
 }
