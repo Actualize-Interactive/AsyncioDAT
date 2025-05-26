@@ -434,12 +434,43 @@ AsyncioDAT::initializeAsyncio()
 	m_asyncioInitialized = true;
 	m_loopRunning = true;
 	
+
+	// Execute on_create callback from Python file on first startup
+	static bool s_first_init = true;
+	if (s_first_init) {
+		executeOnCreateCallback("on_asyncio_create.py");
+		s_first_init = false;
+	}
+
 	addStatusMessage("Asyncio event loop initialized successfully");
 
 	// Call Python callback
 	if (m_nodeInfo) {
 		PyObject* callback_args = m_nodeInfo->context->createArgumentsTuple(1, nullptr);
 		PyTuple_SET_ITEM(callback_args, 1, PyBool_FromLong(1));
+
+		// Try to cook the operator before calling this callback because the first 
+		// time this is called the callbacksDAT doesn't appear to be loaded. It seems
+		// that the callbacksDAT itself is not yet initialized when this is called...
+		// bypassing this for now since it doesn't work...
+		if (true) {
+			// first argument self
+			PyObject* self = PyTuple_GetItem(callback_args, 0);
+			if (!self) {
+				PyErr_Print();
+				m_error = "Failed to get self from callback arguments";
+				addStatusMessage(m_error);
+				Py_DECREF(callback_args);
+				return false;
+			}
+			Py_INCREF(self); // Increment reference count for self
+
+			PY_Struct* me = (PY_Struct*)self;
+			PY_GetInfo info;
+			info.autoCook = true;
+			me->context->getNodeInstance(info); // force the node to cook
+			Py_DECREF(self); // Decrement reference count for self
+		}
 
 		result = m_nodeInfo->context->callPythonCallback("on_initialize", callback_args, nullptr, nullptr);
 		Py_DECREF(callback_args);
@@ -448,9 +479,8 @@ AsyncioDAT::initializeAsyncio()
 			Py_DECREF(result);
 		}
 	}
+
 	std::cout << "Asyncio event loop initialized successfully" << std::endl;
-
-
 
 	return true;
 }
@@ -933,4 +963,251 @@ AsyncioDAT::prependPath(const std::string& filepath)
 
     Py_DECREF(sysPath);
     Py_DECREF(sysModule);
+}
+
+bool
+AsyncioDAT::executeOnCreateCallback(const std::string& filepath)
+{
+	std::ifstream file(filepath);
+	if (!file.is_open()) {
+		addStatusMessage("Could not find startup Python file: " + filepath + " (this is optional)");
+		return false;
+	}
+
+	// Read the entire file content
+	std::string content((std::istreambuf_iterator<char>(file)),
+						std::istreambuf_iterator<char>());
+	file.close();
+
+	if (content.empty()) {
+		addStatusMessage("Startup Python file is empty: " + filepath);
+		return false;
+	}
+
+	// Create globals and locals dictionaries
+	PyObject* globals = PyDict_New();
+	PyObject* locals = PyDict_New();
+
+	// Add builtins to globals
+	PyObject* builtins = PyImport_ImportModule("builtins");
+	if (builtins) {
+		PyDict_SetItemString(globals, "__builtins__", builtins);
+		Py_DECREF(builtins);
+	}
+
+	// Add __name__ and __file__ to globals for proper module context
+	PyDict_SetItemString(globals, "__name__", PyUnicode_FromString("__main__"));
+	PyDict_SetItemString(globals, "__file__", PyUnicode_FromString(filepath.c_str()));
+
+	// Compile and execute the Python code to define functions and imports
+	PyObject* compiled = Py_CompileString(content.c_str(), filepath.c_str(), Py_file_input);
+	if (!compiled) {
+		addStatusMessage("Failed to compile startup Python file: " + filepath);
+		PyErr_Print();
+		Py_DECREF(globals);
+		Py_DECREF(locals);
+		return false;
+	}
+
+	// Execute in globals so module-level imports are available
+	PyObject* result = PyEval_EvalCode(compiled, globals, globals);
+	Py_DECREF(compiled);
+
+	if (!result) {
+		addStatusMessage("Failed to execute startup Python file: " + filepath);
+		PyErr_Print();
+		Py_DECREF(globals);
+		Py_DECREF(locals);
+		return false;
+	}
+	Py_DECREF(result);
+
+	// Look for the on_create function in globals (where it was executed)
+	PyObject* onCreateFunc = PyDict_GetItemString(globals, "on_create");
+	if (!onCreateFunc || !PyCallable_Check(onCreateFunc)) {
+		addStatusMessage("No callable 'on_create' function found in: " + filepath);
+		Py_DECREF(globals);
+		Py_DECREF(locals);
+		return false;
+	}
+
+	// Create a Python wrapper object with plugin methods
+	PyObject* wrapper = createPythonWrapper();
+	if (!wrapper) {
+		addStatusMessage("Failed to create Python wrapper for on_create callback");
+		Py_DECREF(globals);
+		Py_DECREF(locals);
+		return false;
+	}
+
+	// Call the on_create function with the wrapper object
+	PyObject* args = PyTuple_Pack(1, wrapper);
+	PyObject* callResult = PyObject_CallObject(onCreateFunc, args);
+	Py_DECREF(args);
+	Py_DECREF(wrapper);
+
+	if (!callResult) {
+		addStatusMessage("Error calling on_create function from: " + filepath);
+		PyErr_Print();
+		Py_DECREF(globals);
+		Py_DECREF(locals);
+		return false;
+	}
+
+	Py_DECREF(callResult);
+	Py_DECREF(globals);
+	Py_DECREF(locals);
+
+	addStatusMessage("Successfully called on_create from: " + filepath);
+	return true;
+}
+
+PyObject*
+AsyncioDAT::createPythonWrapper()
+{
+	// Create a simple wrapper class that calls the global Python functions
+	const char* wrapperCode = 
+R"(
+class AsyncioDATWrapper:
+    """Simple wrapper that provides access to AsyncioDAT plugin methods"""
+    
+    def __init__(self, instance_ptr):
+        # Store the C++ instance pointer (not used directly, just for reference)
+        self._instance_ptr = instance_ptr
+    
+    def add_plugin(self, name, obj):
+        """Add a plugin to the AsyncioDAT instance"""
+        # Call the global Python function that delegates to C++
+        # Pass arguments as separate parameters, not as a tuple
+        return py_setPlugin(name, obj)
+    
+    def get_plugin(self, name):
+        """Get a plugin from the AsyncioDAT instance"""
+        return py_getPlugin(name)
+    
+    def remove_plugin(self, name):
+        """Remove a plugin from the AsyncioDAT instance"""
+        return py_delPlugin(name)
+    
+    def has_plugin(self, name):
+        """Check if a plugin exists in the AsyncioDAT instance"""
+        return py_hasPlugin(name)
+    
+    def clear_plugins(self):
+        """Clear all plugins from the AsyncioDAT instance"""
+        return py_clearPlugins()
+
+    def get_plugin_names(self):
+        """Get names of all plugins"""
+        names = py_getPluginNames()
+        return list(names) if names else []
+    
+    def get_event_loop(self):
+        """Get the asyncio event loop"""
+        return py_getEventLoop()
+
+    def add_task(self, coro):
+        """Add a coroutine as a task to the event loop"""
+        return py_addAsyncTask(coro)
+
+    def create_task(self, coro):
+        """Create a task from a coroutine"""
+        return py_createAsyncTask(coro)
+
+    def is_running(self):
+        """Check if asyncio is running"""
+        return py_isAsyncioRunning()
+
+AsyncioDATWrapper
+)";
+
+	PyObject* globals = PyDict_New();
+	PyObject* locals = PyDict_New();
+
+	// Add builtins to globals
+	PyObject* builtins = PyImport_ImportModule("builtins");
+	if (builtins) {
+		PyDict_SetItemString(globals, "__builtins__", builtins);
+		Py_DECREF(builtins);
+	}
+
+	// Add the Python binding functions to the globals so they can be called
+	// Find functions by name from the py_methods array
+	for (int i = 0; py_methods[i].ml_name != nullptr; i++) {
+		const char* name = py_methods[i].ml_name;
+		
+		if (strcmp(name, "set_plugin") == 0) {
+			PyDict_SetItemString(globals, "py_setPlugin", PyCFunction_New(&py_methods[i], nullptr));
+		} else if (strcmp(name, "get_plugin") == 0) {
+			PyDict_SetItemString(globals, "py_getPlugin", PyCFunction_New(&py_methods[i], nullptr));
+		} else if (strcmp(name, "del_plugin") == 0) {
+			PyDict_SetItemString(globals, "py_delPlugin", PyCFunction_New(&py_methods[i], nullptr));
+		} else if (strcmp(name, "has_plugin") == 0) {
+			PyDict_SetItemString(globals, "py_hasPlugin", PyCFunction_New(&py_methods[i], nullptr));
+		} else if (strcmp(name, "clear_plugins") == 0) {
+			PyDict_SetItemString(globals, "py_clearPlugins", PyCFunction_New(&py_methods[i], nullptr));
+		} else if (strcmp(name, "get_event_loop") == 0) {
+			PyDict_SetItemString(globals, "py_getEventLoop", PyCFunction_New(&py_methods[i], nullptr));
+		} else if (strcmp(name, "add_task") == 0) {
+			PyDict_SetItemString(globals, "py_addAsyncTask", PyCFunction_New(&py_methods[i], nullptr));
+		} else if (strcmp(name, "create_task") == 0) {
+			PyDict_SetItemString(globals, "py_createAsyncTask", PyCFunction_New(&py_methods[i], nullptr));
+		} else if (strcmp(name, "is_running") == 0) {
+			PyDict_SetItemString(globals, "py_isAsyncioRunning", PyCFunction_New(&py_methods[i], nullptr));
+		}
+	}
+
+	// Add the getter function for plugin names - create a proper static method def
+	static PyMethodDef getterMethodDef = {"py_getPluginNames", (PyCFunction)py_getPluginNames, METH_NOARGS, "Get plugin names"};
+	PyDict_SetItemString(globals, "py_getPluginNames", PyCFunction_New(&getterMethodDef, nullptr));
+	
+	PyObject* compiled = Py_CompileString(wrapperCode, "<asyncio_wrapper>", Py_file_input);
+	if (!compiled) {
+		addStatusMessage("Failed to compile wrapper code");
+		PyErr_Print();
+		Py_DECREF(globals);
+		Py_DECREF(locals);
+		return nullptr;
+	}
+
+	PyObject* result = PyEval_EvalCode(compiled, globals, locals);
+	Py_DECREF(compiled);
+
+	if (!result) {
+		addStatusMessage("Failed to execute wrapper code");
+		PyErr_Print();
+		Py_DECREF(globals);
+		Py_DECREF(locals);
+		return nullptr;
+	}
+	Py_DECREF(result);
+
+	// Get the wrapper class
+	PyObject* wrapperClass = PyDict_GetItemString(locals, "AsyncioDATWrapper");
+	if (!wrapperClass || !PyCallable_Check(wrapperClass)) {
+		addStatusMessage("Failed to get AsyncioDATWrapper class");
+		Py_DECREF(globals);
+		Py_DECREF(locals);
+		return nullptr;
+	}
+
+	// Create the wrapper instance with a dummy pointer
+	PyObject* instancePtr = PyLong_FromVoidPtr(this);
+	PyObject* args = PyTuple_Pack(1, instancePtr);
+	PyObject* wrapper = PyObject_CallObject(wrapperClass, args);
+	
+	// Clean up
+	Py_DECREF(args);
+	Py_DECREF(instancePtr);
+	Py_DECREF(globals);
+	Py_DECREF(locals);
+
+	if (!wrapper) {
+		addStatusMessage("Failed to create AsyncioDATWrapper instance");
+		PyErr_Print();
+		return nullptr;
+	}
+
+	addStatusMessage("Created wrapper successfully");
+	return wrapper;
 }

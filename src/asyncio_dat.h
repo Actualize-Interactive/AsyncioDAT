@@ -52,7 +52,8 @@ public:
 	bool					 hasPlugin(const char* name) const;
 	PyObject*				 getPluginsDict() const { return m_plugins; }
 
-
+	bool					 executeOnCreateCallback(const std::string& filepath);
+	PyObject*				 createPythonWrapper();
 
 private:
 	const OP_NodeInfo*		 m_nodeInfo;
@@ -62,8 +63,8 @@ private:
 
 	inline static bool       s_called_on_startup = false;
 	bool      				 m_autoProcess;
-	int32_t    				 m_maxstatusrows;	
 	bool      				 m_asyncioInitialized;
+	int32_t    				 m_maxstatusrows;	
 
 	PyObject* 				 m_asyncioModule;
 	PyObject* 				 m_eventLoop;
