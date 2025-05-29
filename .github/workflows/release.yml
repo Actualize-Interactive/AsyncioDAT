@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-and-release:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            asset_name: AsyncioDAT-windows.dll
+          - os: macos-latest
+            asset_name: AsyncioDAT-macos.dylib
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup CMake
+      uses: jwlawson/actions-setup-cmake@v2
+      with:
+        cmake-version: '3.25'
+        
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Configure CMake
+      run: |
+        mkdir build
+        cd build
+        # Debug Python setup on macOS
+        if [[ "$RUNNER_OS" == "macOS" ]]; then
+          echo "Python configuration:"
+          python3 --version
+          python3-config --cflags || echo "python3-config not available"
+          python3-config --ldflags || echo "python3-config not available"
+        fi
+        cmake .. -DCMAKE_BUILD_TYPE=Release
+        
+    - name: Build project
+      run: |
+        cd build
+        cmake --build . --config Release
+        
+    - name: Find built library (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        echo "ARTIFACT_PATH=build/bin/AsyncioDAT.dll" >> $env:GITHUB_ENV
+        
+    - name: Find built library (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        # Find the actual library file
+        if [ -f "build/bin/AsyncioDAT.dylib" ]; then
+          echo "ARTIFACT_PATH=build/bin/AsyncioDAT.dylib" >> $GITHUB_ENV
+        elif [ -f "build/bin/libAsyncioDAT.dylib" ]; then
+          echo "ARTIFACT_PATH=build/bin/libAsyncioDAT.dylib" >> $GITHUB_ENV
+        else
+          echo "Library file not found, listing contents:"
+          ls -la build/bin/
+          exit 1
+        fi
+        
+    - name: List build artifacts
+      run: |
+        echo "Listing build directory contents:"
+        ls -la build/
+        if [ -d "build/bin" ]; then
+          echo "Listing bin directory contents:"
+          ls -la build/bin/
+        fi
+        
+    - name: Upload Release Asset
+      uses: softprops/action-gh-release@v1
+      with:
+        files: ${{ env.ARTIFACT_PATH }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

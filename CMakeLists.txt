@@ -27,17 +27,31 @@ target_include_directories(asyncio_dat PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/ext/td/include
     ${CMAKE_CURRENT_SOURCE_DIR}/ext/Python/Include
-    ${CMAKE_CURRENT_SOURCE_DIR}/ext/Python/Include/PC
 )
 
-target_link_directories(asyncio_dat PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/ext/Python/lib/x64
-)
+# Add Windows-specific include directory if on Windows
+if(WIN32)
+    target_include_directories(asyncio_dat PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/ext/Python/Include/PC
+    )
+endif()
 
-# Link against the anim library
-target_link_libraries(asyncio_dat PRIVATE 
-    python311
-)
+# Find Python installation for linking
+if(WIN32)
+    # On Windows, try to find Python in common locations
+    find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+    target_link_libraries(asyncio_dat PRIVATE Python3::Python)
+elseif(APPLE)
+    # On macOS, use the system Python or the one set up by GitHub Actions
+    find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+    target_link_libraries(asyncio_dat PRIVATE Python3::Python)
+else()
+    # On other platforms, use pkg-config to find Python
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(PYTHON REQUIRED python3)
+    target_include_directories(asyncio_dat PRIVATE ${PYTHON_INCLUDE_DIRS})
+    target_link_libraries(asyncio_dat PRIVATE ${PYTHON_LIBRARIES})
+endif()
 
 # Define output directories
 set_target_properties(asyncio_dat PROPERTIES
