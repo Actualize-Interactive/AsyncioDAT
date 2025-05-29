@@ -1,5 +1,24 @@
 # AsyncioDAT Testing Instructions
 
+## Testing the Build System
+
+### Workflow Validation
+
+Before testing the AsyncioDAT functionality, you can validate that the CI and Release workflows are properly configured:
+
+```bash
+python validate_workflows.py
+```
+
+This script checks:
+- YAML structure validity
+- Platform consistency between CI and Release workflows  
+- Artifact path consistency
+- Build tool version consistency
+- Expected artifact presence (AsyncioDAT.dll, AsyncioDAT.dylib)
+
+The validation ensures that both workflows will produce the correct artifacts for Windows (.dll) and macOS (.dylib).
+
 ## Setup
 
 1. **Build the Project**:

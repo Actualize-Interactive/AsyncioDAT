@@ -37,6 +37,8 @@ stays the same, otherwise changes won't be backwards compatible
 #include <assert.h>
 #include <cmath>
 #include <float.h>
+#include <cstdint>
+#include <cstddef>
 
 #ifndef PyObject_HEAD
 	struct _object;

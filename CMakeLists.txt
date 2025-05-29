@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(AnimationCHOP VERSION 1.0.0 LANGUAGES CXX)
+project(AsyncioDAT VERSION 1.0.0 LANGUAGES CXX)
 
 set(VERBOSE_STATUS OFF CACHE BOOL "Verbose status messages" FORCE)
 set(SUPPRESS_NOT_REFERENCED_WARNINGS ON CACHE BOOL "Suppress not referenced warnings" FORCE)
@@ -97,8 +97,7 @@ if(WIN32)
 elseif(APPLE)
     # macOS-specific settings
     set_target_properties(asyncio_dat PROPERTIES
-        BUNDLE TRUE
-        MACOSX_BUNDLE_GUI_IDENTIFIER com.actualize.animationchop
+        MACOSX_BUNDLE_GUI_IDENTIFIER com.actualize.asynciodat
     )
 elseif(UNIX)
     # Linux-specific settings

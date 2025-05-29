@@ -25,60 +25,63 @@ jobs:
       with:
         cmake-version: '3.25'
         
-    - name: Setup Python
+    - name: Setup Python (Windows)
+      if: runner.os == 'Windows'
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
         
-    - name: Configure CMake
+    - name: Setup Python (macOS)
+      if: runner.os == 'macOS'
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Configure CMake (Windows)
+      if: runner.os == 'Windows'
       run: |
         mkdir build
         cd build
-        # Debug Python setup on macOS
-        if [[ "$RUNNER_OS" == "macOS" ]]; then
-          echo "Python configuration:"
-          python3 --version
-          python3-config --cflags || echo "python3-config not available"
-          python3-config --ldflags || echo "python3-config not available"
-        fi
         cmake .. -DCMAKE_BUILD_TYPE=Release
         
-    - name: Build project
+    - name: Configure CMake (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        mkdir build
+        cd build
+        # Find Python and set CMAKE variables
+        python3-config --cflags
+        python3-config --ldflags
+        cmake .. -DCMAKE_BUILD_TYPE=Release
+        
+    - name: Build project (Windows)
+      if: runner.os == 'Windows'
       run: |
         cd build
         cmake --build . --config Release
+        echo "Listing build outputs:"
+        dir bin
         
-    - name: Find built library (Windows)
-      if: runner.os == 'Windows'
-      run: |
-        echo "ARTIFACT_PATH=build/bin/AsyncioDAT.dll" >> $env:GITHUB_ENV
-        
-    - name: Find built library (macOS)
+    - name: Build project (macOS)
       if: runner.os == 'macOS'
       run: |
-        # Find the actual library file
-        if [ -f "build/bin/AsyncioDAT.dylib" ]; then
-          echo "ARTIFACT_PATH=build/bin/AsyncioDAT.dylib" >> $GITHUB_ENV
-        elif [ -f "build/bin/libAsyncioDAT.dylib" ]; then
-          echo "ARTIFACT_PATH=build/bin/libAsyncioDAT.dylib" >> $GITHUB_ENV
-        else
-          echo "Library file not found, listing contents:"
-          ls -la build/bin/
-          exit 1
-        fi
+        cd build
+        cmake --build . --config Release
+        echo "Listing build outputs:"
+        ls -la bin/
         
-    - name: List build artifacts
-      run: |
-        echo "Listing build directory contents:"
-        ls -la build/
-        if [ -d "build/bin" ]; then
-          echo "Listing bin directory contents:"
-          ls -la build/bin/
-        fi
-        
-    - name: Upload Release Asset
+    - name: Upload Release Asset (Windows)
+      if: runner.os == 'Windows'
       uses: softprops/action-gh-release@v1
       with:
-        files: ${{ env.ARTIFACT_PATH }}
+        files: build/bin/AsyncioDAT.dll
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Upload Release Asset (macOS)
+      if: runner.os == 'macOS'
+      uses: softprops/action-gh-release@v1
+      with:
+        files: build/bin/AsyncioDAT.dylib
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
