@@ -20,10 +20,10 @@ FillDATPluginInfo(DAT_PluginInfo *info)
 	// The opType is the unique name for this TOP. It must start with a
 	// capital A-Z character, and all the following characters must lower case
 	// or numbers (a-z, 0-9)
-	info->customOPInfo.opType->setString("Asynciodat");
+	info->customOPInfo.opType->setString("Asyncio");
 
 	// The opLabel is the text that will show up in the OP Create Dialog
-	info->customOPInfo.opLabel->setString("Asyncio DAT");
+	info->customOPInfo.opLabel->setString("Asyncio");
 
 	// Will be turned into a 3 letter icon on the nodes
 	info->customOPInfo.opIcon->setString("AIO");
