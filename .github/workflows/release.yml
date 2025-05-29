@@ -49,6 +49,9 @@ jobs:
       run: |
         mkdir build
         cd build
+        # Find Python and set CMAKE variables
+        python3-config --cflags
+        python3-config --ldflags
         cmake .. -DCMAKE_BUILD_TYPE=Release
         
     - name: Build project (Windows)
