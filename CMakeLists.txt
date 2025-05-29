@@ -38,9 +38,15 @@ endif()
 
 # Find Python installation for linking
 if(WIN32)
-    # On Windows, try to find Python in common locations
-    find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
-    target_link_libraries(asyncio_dat PRIVATE Python3::Python)
+    # On Windows, link to the included Python libraries in ext/Python
+    target_link_directories(asyncio_dat PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/ext/Python/lib/x64
+    )
+    
+    # Link against the included Python library
+    target_link_libraries(asyncio_dat PRIVATE 
+        python311
+    )
 elseif(APPLE)
     # On macOS, use the system Python or the one set up by GitHub Actions
     find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
