@@ -1,6 +1,7 @@
 #include "DAT_CPlusPlusBase.h"
 #include <string>
 #include <deque>
+#include <cstdint>
 
 #ifdef _WIN32
 	#include <Python.h>

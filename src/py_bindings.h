@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DAT_CPlusPlusBase.h"
+#include <cstdint>
 
 #ifdef _WIN32
 	#include <Python.h>
