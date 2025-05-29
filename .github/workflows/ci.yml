@@ -48,6 +48,9 @@ jobs:
       run: |
         mkdir build
         cd build
+        # Find Python and set CMAKE variables
+        python3-config --cflags
+        python3-config --ldflags
         cmake .. -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
         
     - name: Build project (Windows)
@@ -55,12 +58,16 @@ jobs:
       run: |
         cd build
         cmake --build . --config ${{ matrix.build_type }}
+        echo "Listing build outputs:"
+        dir bin
         
     - name: Build project (macOS)
       if: runner.os == 'macOS'
       run: |
         cd build
         cmake --build . --config ${{ matrix.build_type }}
+        echo "Listing build outputs:"
+        ls -la bin/
         
     - name: Upload build artifacts (Windows)
       if: runner.os == 'Windows'
@@ -74,4 +81,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: AsyncioDAT-macos-${{ matrix.build_type }}
-        path: build/bin/libAsyncioDAT.*
+        path: build/bin/AsyncioDAT.dylib

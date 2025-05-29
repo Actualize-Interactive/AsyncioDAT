@@ -3,9 +3,6 @@ name: Release
 on:
   release:
     types: [published]
-  push:
-    tags:
-      - 'v*'
 
 jobs:
   build-and-release:
@@ -13,10 +10,8 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact_name: AsyncioDAT.dll
             asset_name: AsyncioDAT-windows.dll
           - os: macos-latest
-            artifact_name: libAsyncioDAT.dylib
             asset_name: AsyncioDAT-macos.dylib
     
     runs-on: ${{ matrix.os }}
@@ -39,6 +34,13 @@ jobs:
       run: |
         mkdir build
         cd build
+        # Debug Python setup on macOS
+        if [[ "$RUNNER_OS" == "macOS" ]]; then
+          echo "Python configuration:"
+          python3 --version
+          python3-config --cflags || echo "python3-config not available"
+          python3-config --ldflags || echo "python3-config not available"
+        fi
         cmake .. -DCMAKE_BUILD_TYPE=Release
         
     - name: Build project
@@ -55,22 +57,28 @@ jobs:
       if: runner.os == 'macOS'
       run: |
         # Find the actual library file
-        if [ -f "build/bin/libAsyncioDAT.dylib" ]; then
-          echo "ARTIFACT_PATH=build/bin/libAsyncioDAT.dylib" >> $GITHUB_ENV
-        elif [ -f "build/bin/AsyncioDAT.dylib" ]; then
+        if [ -f "build/bin/AsyncioDAT.dylib" ]; then
           echo "ARTIFACT_PATH=build/bin/AsyncioDAT.dylib" >> $GITHUB_ENV
+        elif [ -f "build/bin/libAsyncioDAT.dylib" ]; then
+          echo "ARTIFACT_PATH=build/bin/libAsyncioDAT.dylib" >> $GITHUB_ENV
         else
           echo "Library file not found, listing contents:"
           ls -la build/bin/
           exit 1
         fi
         
+    - name: List build artifacts
+      run: |
+        echo "Listing build directory contents:"
+        ls -la build/
+        if [ -d "build/bin" ]; then
+          echo "Listing bin directory contents:"
+          ls -la build/bin/
+        fi
+        
     - name: Upload Release Asset
-      uses: actions/upload-release-asset@v1
+      uses: softprops/action-gh-release@v1
+      with:
+        files: ${{ env.ARTIFACT_PATH }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ github.event.release.upload_url }}
-        asset_path: ${{ env.ARTIFACT_PATH }}
-        asset_name: ${{ matrix.asset_name }}
-        asset_content_type: application/octet-stream
