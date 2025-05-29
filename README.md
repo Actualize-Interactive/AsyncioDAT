@@ -264,7 +264,8 @@ The operator's output provides real-time status:
 
 ### Prerequisites
 
-- Visual Studio 2019 or later
+- Visual Studio 2019 or later (Windows)
+- Xcode Command Line Tools (macOS)
 - CMake 3.15 or later
 - TouchDesigner SDK
 - Python development headers
@@ -274,9 +275,24 @@ The operator's output provides real-time status:
 1. Clone the repository
 2. Run the build script:
    ```powershell
+   # Windows
    .\build.ps1
    ```
+   ```bash
+   # macOS/Linux
+   mkdir build && cd build
+   cmake .. -DCMAKE_BUILD_TYPE=Release
+   cmake --build .
+   ```
 3. The plugin will be built and copied to the test directory
+
+### Continuous Integration
+
+The project includes GitHub Actions workflows for:
+- **CI**: Automatic builds on Windows and macOS for every push and pull request
+- **Release**: Automatic building and publishing of artifacts when a release is created
+
+Release artifacts are automatically built and attached to GitHub releases for easy download.
 
 ### Development
 

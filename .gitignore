@@ -400,8 +400,10 @@ FodyWeavers.xsd
 # JetBrains Rider
 *.sln.iml
 
+# macOS
+.DS_Store
 
-
+# Build directory
 build
 test/Backup
 test/Plugins
