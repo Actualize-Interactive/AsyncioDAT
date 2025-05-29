@@ -38,9 +38,10 @@ endif()
 
 # Find Python installation for linking
 if(WIN32)
-    # On Windows, try to find Python in common locations
-    find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
-    target_link_libraries(asyncio_dat PRIVATE Python3::Python)
+    # On Windows, use the included Python headers in ext/Python
+    # The Python libs will be linked automatically via pragma comment 
+    # directives in pyconfig.h (python311.lib, python311_d.lib, etc.)
+    # No explicit linking needed here - just ensure headers are included
 elseif(APPLE)
     # On macOS, use the system Python or the one set up by GitHub Actions
     find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
