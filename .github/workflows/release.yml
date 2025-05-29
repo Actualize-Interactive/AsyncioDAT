@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: AsyncioDAT.dll
+            asset_name: AsyncioDAT-windows.dll
+          - os: macos-latest
+            artifact_name: libAsyncioDAT.dylib
+            asset_name: AsyncioDAT-macos.dylib
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup CMake
+      uses: jwlawson/actions-setup-cmake@v2
+      with:
+        cmake-version: '3.25'
+        
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Configure CMake
+      run: |
+        mkdir build
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Release
+        
+    - name: Build project
+      run: |
+        cd build
+        cmake --build . --config Release
+        
+    - name: Find built library (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        echo "ARTIFACT_PATH=build/bin/AsyncioDAT.dll" >> $env:GITHUB_ENV
+        
+    - name: Find built library (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        # Find the actual library file
+        if [ -f "build/bin/libAsyncioDAT.dylib" ]; then
+          echo "ARTIFACT_PATH=build/bin/libAsyncioDAT.dylib" >> $GITHUB_ENV
+        elif [ -f "build/bin/AsyncioDAT.dylib" ]; then
+          echo "ARTIFACT_PATH=build/bin/AsyncioDAT.dylib" >> $GITHUB_ENV
+        else
+          echo "Library file not found, listing contents:"
+          ls -la build/bin/
+          exit 1
+        fi
+        
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ${{ env.ARTIFACT_PATH }}
+        asset_name: ${{ matrix.asset_name }}
+        asset_content_type: application/octet-stream
