@@ -1,9 +1,10 @@
 #include "asyncio_dat.h"
 #include "py_bindings.h"
 #include <iostream>
-#include <format>
 #include <chrono>
 #include <fstream>
+#include <vector>
+#include <sstream>
 
 
 
@@ -331,7 +332,9 @@ AsyncioDAT::tryBecomeActiveInstance()
 {
 	if (getActiveAsyncioInstance() == nullptr) {
 		setActiveAsyncioInstance(this);
-		addStatusMessage(std::format("AsyncioDAT instance {} is now the active instance.", static_cast<void*>(this)));
+		std::ostringstream oss;
+		oss << "AsyncioDAT instance " << static_cast<void*>(this) << " is now the active instance.";
+		addStatusMessage(oss.str());
 		return true;
 	}
 	return getActiveAsyncioInstance() == this;

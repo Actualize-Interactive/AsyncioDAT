@@ -5,7 +5,7 @@ set(VERBOSE_STATUS OFF CACHE BOOL "Verbose status messages" FORCE)
 set(SUPPRESS_NOT_REFERENCED_WARNINGS ON CACHE BOOL "Suppress not referenced warnings" FORCE)
 
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -28,6 +28,11 @@ target_include_directories(asyncio_dat PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/ext/td/include
     ${CMAKE_CURRENT_SOURCE_DIR}/ext/Python/Include
 )
+
+# Add platform-specific definitions
+if(NOT WIN32)
+    target_compile_definitions(asyncio_dat PRIVATE __cdecl=)
+endif()
 
 # Add Windows-specific include directory if on Windows
 if(WIN32)
@@ -101,6 +106,6 @@ elseif(APPLE)
     )
 elseif(UNIX)
     # Linux-specific settings
-    target_compile_options(asyncio_dat PRIVATE -Wall -Wextra)
+    target_compile_options(asyncio_dat PRIVATE -Wall -Wextra -Wno-changes-meaning -fpermissive)
 endif()
 
