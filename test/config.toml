@@ -2,7 +2,9 @@
 paths = [
     "some_path",
     "another path with spaces",
-    ".venv/Lib/site-packages"
+    ".venv/Lib/site-packages",
+    "modules",
+    "modules/proto"
 ]
 
 [asyncio]

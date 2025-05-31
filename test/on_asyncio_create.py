@@ -1,37 +1,27 @@
-import grpc  # This import is now accessible in the callback
+import grpc
+import asyncio
+import time
+from grpc_service_plugin import GRPCServicePlugin
 
-class TestPlugin:
-    """
-    This class is a plugin for AsyncioDat that sets up a gRPC channel
-    when the AsyncioDat instance is created.
-    """
-    
-    def __init__(self):
-        self.name = 'TestPlugin'
-    
-    def test_method(self):
-        """
-        A test method that can be called to verify the plugin functionality.
-        """
-        print('TestPlugin method called.')
-
-
-       
 
 def on_create(asyncio_dat):
     """
     This function is called when the AsyncioDat instance is created.
-    It sets up the gRPC channel and stub for the AsyncioDat instance.
+    It sets up the gRPC server and adds it as a plugin to the AsyncioDat instance.
     """
     print('on_create called with asyncio_dat:', asyncio_dat)
     
-    if grpc is not None:
-        print('gRPC is available, import worked!')
-    else:
-        print('gRPC is not available, cannot set up channel and stub.')
-        return
+    # Create and add the plugin to the asyncio_dat instance
+    test_plugin = GRPCServicePlugin()
+    asyncio_dat.add_plugin('test_plugin', test_plugin)
     
-    # add a plugin to the asyncio_dat instance
-    asyncio_dat.add_plugin('test_plugin', TestPlugin())
+    # Start the gRPC server asynchronously
+    async def start_server():
+        await test_plugin.start_grpc_server()
+
+    asyncio_dat.create_task(start_server())
+
+ 
+
 
     

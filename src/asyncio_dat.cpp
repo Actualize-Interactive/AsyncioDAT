@@ -155,7 +155,7 @@ AsyncioDAT::execute(DAT_Output* output, const OP_Inputs* inputs, void* reserved1
 
 	if (!s_called_on_startup) {
 		PyObject* callback_args = m_nodeInfo->context->createArgumentsTuple(1, nullptr);
-		if (!callback_args) {
+		if (callback_args) {
 			PyTuple_SET_ITEM(callback_args, 1, PyBool_FromLong(1));
 			PyObject *result = m_nodeInfo->context->callPythonCallback("on_startup", callback_args, nullptr, nullptr);
 			Py_DECREF(callback_args);
@@ -164,8 +164,9 @@ AsyncioDAT::execute(DAT_Output* output, const OP_Inputs* inputs, void* reserved1
 				Py_DECREF(result);
 			}
 			s_called_on_startup = true;
+			addStatusMessage("on_startup called");
+		} else {
 			addStatusMessage("Failed to create callback arguments tuple.");
-			return;
 		}
 	}
 

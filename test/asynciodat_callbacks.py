@@ -1,5 +1,7 @@
 # AsyncioDAT Python Callbacks
 
+from calculator_servicer import CalculatorServiceServicer
+from proto import test_service_pb2_grpc
 
 class TestOnInitPlugin:
     """
@@ -39,6 +41,12 @@ def on_startup(asyncioDat, success):
 	except error as e:
 		print(e)
 
+	if asyncioDat.has_plugin('test_plugin'):
+		plugin = asyncioDat.plugins.test_plugin
+		add_method = test_service_pb2_grpc.add_CalculatorServiceServicer_to_server
+		plugin.add_servicer(add_method, CalculatorServiceServicer())
+
+	
 def on_pre_shutdown(asyncioDat, success, info):
 	"""Called when the AsyncioDAT is shutdown."""
 	pass
