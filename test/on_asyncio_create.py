@@ -3,6 +3,8 @@ import asyncio
 import time
 from grpc_service_plugin import GRPCServicePlugin
 
+from calculator_servicer import CalculatorServiceServicer
+from proto import test_service_pb2_grpc
 
 def on_create(asyncio_dat):
     """
@@ -18,10 +20,12 @@ def on_create(asyncio_dat):
     # Start the gRPC server asynchronously
     async def start_server():
         await test_plugin.start_grpc_server()
+    
+
+    add_method = test_service_pb2_grpc.add_CalculatorServiceServicer_to_server
+    test_plugin.add_servicer(add_method, CalculatorServiceServicer())
 
     asyncio_dat.create_task(start_server())
-
- 
 
 
     

@@ -7,6 +7,7 @@ import time
 from proto import test_service_pb2
 from proto import test_service_pb2_grpc
 
+from td import *
 
 class CalculatorServiceServicer(test_service_pb2_grpc.CalculatorServiceServicer):
     """
