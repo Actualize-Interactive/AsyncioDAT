@@ -5,6 +5,7 @@
 #include <fstream>
 #include <vector>
 #include <sstream>
+#include <toml.hpp>
 
 
 
@@ -95,8 +96,18 @@ AsyncioDAT::AsyncioDAT(const OP_NodeInfo* info)
 	, m_loopRunning(false)
 	, m_pollEventLoopCount(0)
 	, m_pollEventLoopDuration(0.0)
+	, m_callbackPath("on_asyncio_create.py")  // default fallback
 {
-	prependPath("prepend_to_path.txt");
+	// Load configuration from config.toml, fallback to old behavior
+	loadConfig();
+	
+	// Apply paths from config or fallback to old file-based approach
+	if (!m_configPaths.empty()) {
+		prependPathsFromConfig(m_configPaths);
+	} else {
+		prependPath("prepend_to_path.txt");
+	}
+	
 	if (tryBecomeActiveInstance()) {
 		initializeAsyncio();
 	}
@@ -448,7 +459,7 @@ AsyncioDAT::initializeAsyncio()
 	// Execute on_create callback from Python file on first startup
 	static bool s_first_init = true;
 	if (s_first_init) {
-		executeOnCreateCallback("on_asyncio_create.py");
+		executeOnCreateCallback(m_callbackPath);
 		s_first_init = false;
 	}
 
@@ -1136,6 +1147,99 @@ AsyncioDAT::executeOnCreateCallback(const std::string& filepath)
 
 	addStatusMessage("Successfully called on_create from: " + filepath);
 	return true;
+}
+
+void
+AsyncioDAT::loadConfig(const std::string& configPath)
+{
+	try {
+		// Try to parse the TOML config file
+		const auto data = toml::parse(configPath);
+		
+		// Load paths from [main] section
+		if (data.contains("main")) {
+			const auto main = toml::find(data, "main");
+			if (main.contains("paths")) {
+				const auto paths = toml::find<std::vector<std::string>>(main, "paths");
+				m_configPaths = paths;
+				addStatusMessage("Loaded " + std::to_string(paths.size()) + " paths from " + configPath);
+			}
+		}
+		
+		// Load callback path from [asyncio] section
+		if (data.contains("asyncio")) {
+			const auto asyncio = toml::find(data, "asyncio");
+			if (asyncio.contains("callback_path")) {
+				m_callbackPath = toml::find<std::string>(asyncio, "callback_path");
+				addStatusMessage("Using callback path from config: " + m_callbackPath);
+			}
+		}
+		
+	} catch (const std::exception& e) {
+		addStatusMessage("Could not load config from " + configPath + ": " + e.what() + " (falling back to default behavior)");
+	}
+}
+
+void
+AsyncioDAT::prependPathsFromConfig(const std::vector<std::string>& paths)
+{
+	if (paths.empty()) {
+		addStatusMessage("No paths found in configuration");
+		return;
+	}
+
+	// Get sys module
+	PyObject* sysModule = PyImport_ImportModule("sys");
+	if (!sysModule) {
+		addStatusMessage("Failed to import sys module");
+		PyErr_Clear();
+		return;
+	}
+
+	// Get sys.path list
+	PyObject* sysPath = PyObject_GetAttrString(sysModule, "path");
+	if (!sysPath || !PyList_Check(sysPath)) {
+		addStatusMessage("Failed to get sys.path");
+		Py_DECREF(sysModule);
+		PyErr_Clear();
+		return;
+	}
+
+	// Prepend each path entry to sys.path if not already present
+	for (const auto& entry : paths) {
+		PyObject* pathStr = PyUnicode_FromString(entry.c_str());
+		if (!pathStr) {
+			addStatusMessage("Failed to create string for path: " + entry);
+			continue;
+		}
+
+		// Check if path already exists in sys.path
+		int contains = PySequence_Contains(sysPath, pathStr);
+		if (contains == -1) {
+			// Error occurred
+			addStatusMessage("Error checking if path exists: " + entry);
+			Py_DECREF(pathStr);
+			PyErr_Clear();
+			continue;
+		}
+
+		if (contains == 0) {
+			// Path doesn't exist, prepend it (insert at index 0)
+			if (PyList_Insert(sysPath, 0, pathStr) == 0) {
+				addStatusMessage("Prepended to sys.path: " + entry);
+			} else {
+				addStatusMessage("Failed to prepend to sys.path: " + entry);
+				PyErr_Clear();
+			}
+		} else {
+			addStatusMessage("Path already in sys.path: " + entry);
+		}
+
+		Py_DECREF(pathStr);
+	}
+
+	Py_DECREF(sysPath);
+	Py_DECREF(sysModule);
 }
 
 PyObject*

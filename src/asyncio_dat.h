@@ -1,5 +1,6 @@
 #include "DAT_CPlusPlusBase.h"
 #include <string>
+#include <vector>
 #include <deque>
 #include <cstdint>
 
@@ -56,6 +57,7 @@ public:
 
 	bool					 executeOnCreateCallback(const std::string& filepath);
 	PyObject*				 createAsyncioDATInterface();
+	void					 loadConfig(const std::string& configPath = "config.toml");
 
 private:
 	const OP_NodeInfo*		 m_nodeInfo;
@@ -87,6 +89,8 @@ private:
 	uint32_t 				 m_pollEventLoopCount;
 	double    				 m_pollEventLoopDuration;
 
+	std::vector<std::string> m_configPaths;
+	std::string				 m_callbackPath;
 
 
 	void					 makeTable(DAT_Output* output);
@@ -96,6 +100,7 @@ private:
 	void					 releaseActiveInstance();
 
 	void					 prependPath(const std::string& filepath);
+	void					 prependPathsFromConfig(const std::vector<std::string>& paths);
 
 };
 
