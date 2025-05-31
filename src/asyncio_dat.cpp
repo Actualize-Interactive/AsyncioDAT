@@ -1,6 +1,7 @@
 #include "asyncio_dat.h"
 #include "py_bindings.h"
 #include <iostream>
+#include <format>
 #include <chrono>
 #include <fstream>
 #include <vector>
@@ -343,9 +344,7 @@ AsyncioDAT::tryBecomeActiveInstance()
 {
 	if (getActiveAsyncioInstance() == nullptr) {
 		setActiveAsyncioInstance(this);
-		std::ostringstream oss;
-		oss << "AsyncioDAT instance " << static_cast<void*>(this) << " is now the active instance.";
-		addStatusMessage(oss.str());
+		addStatusMessage(std::format("AsyncioDAT instance {} is now the active instance.", static_cast<void*>(this)));
 		return true;
 	}
 	return getActiveAsyncioInstance() == this;
@@ -1169,8 +1168,8 @@ AsyncioDAT::loadConfig(const std::string& configPath)
 		// Load callback path from [asyncio] section
 		if (data.contains("asyncio")) {
 			const auto asyncio = toml::find(data, "asyncio");
-			if (asyncio.contains("callback_path")) {
-				m_callbackPath = toml::find<std::string>(asyncio, "callback_path");
+			if (asyncio.contains("callback_module_path")) {
+				m_callbackPath = toml::find<std::string>(asyncio, "callback_module_path");
 				addStatusMessage("Using callback path from config: " + m_callbackPath);
 			}
 		}

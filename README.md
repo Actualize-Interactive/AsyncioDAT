@@ -38,7 +38,7 @@ paths = [
 ]
 
 [asyncio]
-callback_path = "path/to/your/callback.py"
+callback_module_path = "path/to/your/callback.py"
 ```
 
 **Configuration sections:**
@@ -47,7 +47,7 @@ callback_path = "path/to/your/callback.py"
   - `paths`: Array of directory paths to prepend to `sys.path` for Python module discovery
   
 - `[asyncio]` section:
-  - `callback_path`: Path to the Python file containing the `on_create` callback function
+  - `callback_module_path`: Path to the Python file containing the `on_create` callback function
 
 **Backward Compatibility:**
 

@@ -6,4 +6,4 @@ paths = [
 ]
 
 [asyncio]
-callback_path = "on_asyncio_create.py"
+callback_module_path = "on_asyncio_create.py"
