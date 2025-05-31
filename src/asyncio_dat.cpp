@@ -99,16 +99,13 @@ AsyncioDAT::AsyncioDAT(const OP_NodeInfo* info)
 	, m_pollEventLoopDuration(0.0)
 	, m_callbackPath("on_asyncio_create.py")  // default fallback
 {
-	// Load configuration from config.toml, fallback to old behavior
+	// Load configuration from config.toml
 	loadConfig();
 	
-	// Apply paths from config or fallback to old file-based approach
 	if (!m_configPaths.empty()) {
 		prependPathsFromConfig(m_configPaths);
-	} else {
-		prependPath("prepend_to_path.txt");
-	}
-	
+	} 
+
 	if (tryBecomeActiveInstance()) {
 		initializeAsyncio();
 	}
@@ -158,15 +155,18 @@ AsyncioDAT::execute(DAT_Output* output, const OP_Inputs* inputs, void* reserved1
 
 	if (!s_called_on_startup) {
 		PyObject* callback_args = m_nodeInfo->context->createArgumentsTuple(1, nullptr);
-		PyTuple_SET_ITEM(callback_args, 1, PyBool_FromLong(1));
+		if (!callback_args) {
+			PyTuple_SET_ITEM(callback_args, 1, PyBool_FromLong(1));
+			PyObject *result = m_nodeInfo->context->callPythonCallback("on_startup", callback_args, nullptr, nullptr);
+			Py_DECREF(callback_args);
 
-		PyObject *result = m_nodeInfo->context->callPythonCallback("on_startup", callback_args, nullptr, nullptr);
-		Py_DECREF(callback_args);
-
-		if (result) {
-			Py_DECREF(result);
+			if (result) {
+				Py_DECREF(result);
+			}
+			s_called_on_startup = true;
+			addStatusMessage("Failed to create callback arguments tuple.");
+			return;
 		}
-		s_called_on_startup = true;
 	}
 
 	m_warning = nullptr;
@@ -466,34 +466,16 @@ AsyncioDAT::initializeAsyncio()
 	// Call Python callback
 	if (m_nodeInfo) {
 		PyObject* callback_args = m_nodeInfo->context->createArgumentsTuple(1, nullptr);
-		PyTuple_SET_ITEM(callback_args, 1, PyBool_FromLong(1));
 
-		// This won't work when called from the constructor because the callbacksDAT
-		// is not yet initialized... Bypassing since we don't really need to cook before
-		// calling the callback.
-		if (false) {
-			// first argument self
-			PyObject* self = PyTuple_GetItem(callback_args, 0);
-			if (!self) {
-				PyErr_Print();
-				m_error = "Failed to get self from callback arguments";
-				addStatusMessage(m_error);
-				Py_DECREF(callback_args);
-				return false;
+		if (callback_args) {
+			PyTuple_SET_ITEM(callback_args, 1, PyBool_FromLong(1));
+			result = m_nodeInfo->context->callPythonCallback("on_initialize", callback_args, nullptr, nullptr);
+			Py_DECREF(callback_args);
+			if (result) {
+				Py_DECREF(result);
 			}
-			Py_INCREF(self);
-
-			PY_Struct* me = (PY_Struct*)self;
-			PY_GetInfo info;
-			info.autoCook = true;
-			me->context->getNodeInstance(info); // force the node to cook
-			Py_DECREF(self); // Decrement reference count for self
-		}
-
-		result = m_nodeInfo->context->callPythonCallback("on_initialize", callback_args, nullptr, nullptr);
-		Py_DECREF(callback_args);
-		if (result) {
-			Py_DECREF(result);
+		} else {
+			addStatusMessage("Failed to create arguments tuple for on_initialize callback");
 		}
 	}
 

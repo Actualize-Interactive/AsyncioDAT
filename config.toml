@@ -1,9 +1,0 @@
-[main]
-paths = [
-    "some_path",
-    "another path with spaces",
-    ".venv/Lib/site-packages"
-]
-
-[asyncio]
-callback_module_path = "on_asyncio_create.py"

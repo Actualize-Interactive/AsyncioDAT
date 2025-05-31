@@ -1,5 +1,0 @@
-# for each path you would like prepended to PATH add a new line with the path
-some_path
-another path with spaces
-# another comment
-.venv/Lib/site-packages
