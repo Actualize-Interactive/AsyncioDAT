@@ -97,7 +97,10 @@ AsyncioDAT::AsyncioDAT(const OP_NodeInfo* info)
 	, m_loopRunning(false)
 	, m_pollEventLoopCount(0)
 	, m_pollEventLoopDuration(0.0)
-	, m_callbackPath("on_asyncio_create.py")  // default fallback
+	, m_callbackPath("asyncio_dat_callbacks.py")
+	, m_on_poll_begin_active(false)
+	, m_on_poll_end_active(false)
+
 {
 	// Load configuration from config.toml
 	loadConfig();
@@ -153,23 +156,6 @@ AsyncioDAT::execute(DAT_Output* output, const OP_Inputs* inputs, void* reserved1
 	if (!output)
 		return;
 
-	if (!s_called_on_startup) {
-		PyObject* callback_args = m_nodeInfo->context->createArgumentsTuple(1, nullptr);
-		if (callback_args) {
-			PyTuple_SET_ITEM(callback_args, 1, PyBool_FromLong(1));
-			PyObject *result = m_nodeInfo->context->callPythonCallback("on_startup", callback_args, nullptr, nullptr);
-			Py_DECREF(callback_args);
-
-			if (result) {
-				Py_DECREF(result);
-			}
-			s_called_on_startup = true;
-			addStatusMessage("on_startup called");
-		} else {
-			addStatusMessage("Failed to create callback arguments tuple.");
-		}
-	}
-
 	m_warning = nullptr;
 	m_error = nullptr;
 	m_maxstatusrows = inputs->getParInt("Maxstatusrows");
@@ -193,6 +179,8 @@ AsyncioDAT::execute(DAT_Output* output, const OP_Inputs* inputs, void* reserved1
 	}
 
 	m_add_stop_task = static_cast<bool>(inputs->getParInt("Addstoptask"));
+	m_on_poll_begin_active = static_cast<bool>(inputs->getParInt("Onpollbegin"));
+	m_on_poll_end_active = static_cast<bool>(inputs->getParInt("Onpollend"));
 
 	if (m_autoPoll && m_asyncioInitialized) {
 		pollEventLoop();
@@ -250,9 +238,7 @@ AsyncioDAT::setupParameters(OP_ParameterManager* manager, void* reserved1)
 
 		OP_ParAppendResult res = manager->appendToggle(np);
 		assert(res == OP_ParAppendResult::Success);
-	}
-
-	{
+	} {
 		OP_NumericParameter	np;
 		np.page = "Asyncio";
 		np.name = "Reset";
@@ -261,9 +247,7 @@ AsyncioDAT::setupParameters(OP_ParameterManager* manager, void* reserved1)
 
 		OP_ParAppendResult res = manager->appendPulse(np);
 		assert(res == OP_ParAppendResult::Success);
-	}
-
-	{
+	} {
 		OP_NumericParameter np;
 		np.page = "Asyncio";
 		np.name = "Autopoll";
@@ -272,9 +256,7 @@ AsyncioDAT::setupParameters(OP_ParameterManager* manager, void* reserved1)
 
 		OP_ParAppendResult res = manager->appendToggle(np);
 		assert(res == OP_ParAppendResult::Success);
-	}
-
-	{
+	} {
 		OP_NumericParameter np;
 		np.page = "Asyncio";
 		np.name = "Addstoptask";
@@ -283,9 +265,7 @@ AsyncioDAT::setupParameters(OP_ParameterManager* manager, void* reserved1)
 
 		OP_ParAppendResult res = manager->appendToggle(np);
 		assert(res == OP_ParAppendResult::Success);
-	}
-
-	{
+	} {
 		OP_NumericParameter	np;
 		np.page = "Asyncio";
 		np.name = "Maxstatusrows";
@@ -297,14 +277,30 @@ AsyncioDAT::setupParameters(OP_ParameterManager* manager, void* reserved1)
 		np.clampMaxes[0] = false;
 		OP_ParAppendResult res = manager->appendInt(np);
 		assert(res == OP_ParAppendResult::Success);
-	}
-
-	{
+	} {
 		OP_NumericParameter	np;
 		np.page = "Asyncio";
 		np.name = "Clearstatus";
 		np.label = "Clear Status";
 		OP_ParAppendResult res = manager->appendPulse(np);
+		assert(res == OP_ParAppendResult::Success);
+	} {
+		OP_NumericParameter np;
+		np.page = "Asyncio";
+		np.name = "Onpollbegin";
+		np.label = "on_poll_begin callback active";
+		np.defaultValues[0] = 0;
+
+		OP_ParAppendResult res = manager->appendToggle(np);
+		assert(res == OP_ParAppendResult::Success);
+	} {
+		OP_NumericParameter np;
+		np.page = "Asyncio";
+		np.name = "Onpollend";
+		np.label = "on_poll_end callback active";
+		np.defaultValues[0] = 0;
+
+		OP_ParAppendResult res = manager->appendToggle(np);
 		assert(res == OP_ParAppendResult::Success);
 	}
 }
@@ -456,28 +452,13 @@ AsyncioDAT::initializeAsyncio()
 	m_loopRunning = true;
 	
 
-	// Execute on_create callback from Python file on first startup
+	// Execute on_start callback from Python file on first startup
 	static bool s_first_init = true;
 	if (s_first_init) {
-		executeOnCreateCallback(m_callbackPath);
+		invoke_on_start_callback(m_callbackPath);
 		s_first_init = false;
-	}
-
-
-	// Call Python callback
-	if (m_nodeInfo) {
-		PyObject* callback_args = m_nodeInfo->context->createArgumentsTuple(1, nullptr);
-
-		if (callback_args) {
-			PyTuple_SET_ITEM(callback_args, 1, PyBool_FromLong(1));
-			result = m_nodeInfo->context->callPythonCallback("on_initialize", callback_args, nullptr, nullptr);
-			Py_DECREF(callback_args);
-			if (result) {
-				Py_DECREF(result);
-			}
-		} else {
-			addStatusMessage("Failed to create arguments tuple for on_initialize callback");
-		}
+	} else {
+		invokeNoArgsCallback("on_initialized");
 	}
 
 	addStatusMessage("Asyncio event loop initialized successfully");
@@ -487,6 +468,8 @@ AsyncioDAT::initializeAsyncio()
 void
 AsyncioDAT::shutdownAsyncio()
 {
+	invokeNoArgsCallback("on_shutdown_begin");
+
 	// Clean up plugins dictionary
    	clearPlugins();
 	Py_XDECREF(m_plugins);
@@ -500,16 +483,20 @@ AsyncioDAT::shutdownAsyncio()
             Py_DECREF(stopArgs);
             if (callSoonResult) {
                 Py_DECREF(callSoonResult);
-            }
-            
-            // Give the loop a chance to process the stop callback
-            if (m_runForever) {
-                PyObject* runResult = PyObject_CallObject(m_runForever, nullptr);
-                if (runResult) {
-                    Py_DECREF(runResult);
-                }
-            }
-        }
+                
+                // Give the loop a chance to process the stop callback
+                if (m_runForever) {
+					PyObject* runResult = PyObject_CallObject(m_runForever, nullptr);
+					if (runResult) {
+						Py_DECREF(runResult);
+					} else {
+						PyErr_Print(); // Check for errors if run_forever fails
+					}
+				}
+			} else {
+				PyErr_Print(); // call_soon failed, print the error
+			}
+		}
         
         // If that didn't work, try the more aggressive approach
         if (m_loopRunning && m_stop) {
@@ -519,7 +506,9 @@ AsyncioDAT::shutdownAsyncio()
             Py_DECREF(args);
             if (result) {
                 Py_DECREF(result);
-            }
+            } else {
+				PyErr_Print(); // Direct stop call failed, print the error
+			}
         }
         
         m_loopRunning = false;
@@ -562,6 +551,8 @@ AsyncioDAT::shutdownAsyncio()
 		releaseActiveInstance();
 		addStatusMessage("Asyncio event loop stopped");
 	}
+
+	invokeNoArgsCallback("on_shutdown_complete");
 }
 
 bool
@@ -573,6 +564,10 @@ AsyncioDAT::pollEventLoop()
 
 	try {
 		auto start = std::chrono::high_resolution_clock::now();
+
+		if (m_on_poll_begin_active) {
+			invokeNoArgsCallback("on_poll_begin");
+		}
 
 		if (m_add_stop_task)
 		{
@@ -598,7 +593,10 @@ AsyncioDAT::pollEventLoop()
 		
 
 		// Process any remaining tasks with sleep(0)
-		PyObject* sleepArgs = PyTuple_Pack(1, PyFloat_FromDouble(0.0));
+		PyObject* zeroFloat = PyFloat_FromDouble(0.0);
+		PyObject* sleepArgs = PyTuple_Pack(1, zeroFloat);
+		Py_DECREF(zeroFloat);  // Clean up the float
+
 		PyObject* sleepCoro = PyObject_CallObject(m_sleep, sleepArgs);
 		Py_DECREF(sleepArgs);
 		
@@ -619,6 +617,11 @@ AsyncioDAT::pollEventLoop()
 		Py_DECREF(runCompleteResult);
 		
 		m_pollEventLoopCount++;
+
+		if (m_on_poll_end_active) {
+			invokeNoArgsCallback("on_poll_end");
+		}
+
 		auto end = std::chrono::high_resolution_clock::now();
 		std::chrono::duration<double> elapsed = end - start;
 		m_pollEventLoopDuration = elapsed.count() * 1000.0; // Convert to milliseconds
@@ -627,6 +630,26 @@ AsyncioDAT::pollEventLoop()
 	catch (...) {
 		PyErr_Clear();
 		return false;
+	}
+}
+
+void AsyncioDAT::invokeNoArgsCallback(const char *callbackName)
+{
+    if (!m_nodeInfo || !m_nodeInfo->context) {
+        addStatusMessage(std::format("No context available for callback {}", callbackName));
+        return;
+    }
+
+	PyObject* callback_args = m_nodeInfo->context->createArgumentsTuple(0, nullptr);
+	if (callback_args) {
+		PyObject *result = m_nodeInfo->context->callPythonCallback(callbackName, callback_args, nullptr, nullptr);
+		Py_DECREF(callback_args);
+
+		if (result) {
+			Py_DECREF(result);
+		}
+	} else {
+		addStatusMessage(std::format("Failed to create callback arguments tuple for {}", callbackName));
 	}
 }
 
@@ -929,12 +952,24 @@ AsyncioDAT::getPluginNames() const
 void
 AsyncioDAT::clearPlugins()
 {
-	if (m_plugins) {
-		PyDict_Clear(m_plugins);
-		addStatusMessage("Cleared all plugins");
-	} else {
-		addStatusMessage("No plugins to clear");
-	}
+    if (!m_plugins) { // Add this check
+        return;
+    }
+
+    // Existing logic to clear the Python dictionary,
+    // for example, iterating and Py_XDECREF'ing items,
+    // and then PyDict_Clear(m_plugins).
+    // This part assumes m_plugins is a valid PyObject* if it's not nullptr.
+    // For instance:
+    PyObject *key, *value;
+    Py_ssize_t pos = 0;
+    // PyDict_Next is safe with a valid dict, but ensure values are DECREF'd if owned
+    while (PyDict_Next(m_plugins, &pos, &key, &value)) {
+        Py_XDECREF(value); // Assuming values are owned and need to be decref'd
+    }
+    PyDict_Clear(m_plugins); // Clears all items from the dictionary
+
+	addStatusMessage("Cleared all plugins");
 }
 
 bool
@@ -1042,7 +1077,7 @@ AsyncioDAT::prependPath(const std::string& filepath)
 }
 
 bool
-AsyncioDAT::executeOnCreateCallback(const std::string& filepath)
+AsyncioDAT::invoke_on_start_callback(const std::string& filepath)
 {
 	std::ifstream file(filepath);
 	if (!file.is_open()) {
@@ -1095,10 +1130,10 @@ AsyncioDAT::executeOnCreateCallback(const std::string& filepath)
 	}
 	Py_DECREF(result);
 
-	// Look for the on_create function in globals (where it was executed)
-	PyObject* onCreateFunc = PyDict_GetItemString(globals, "on_create");
+	// Look for the on_start function in globals (where it was executed)
+	PyObject* onCreateFunc = PyDict_GetItemString(globals, "on_start");
 	if (!onCreateFunc || !PyCallable_Check(onCreateFunc)) {
-		addStatusMessage("No callable 'on_create' function found in: " + filepath);
+		addStatusMessage("No callable 'on_start' function found in: " + filepath);
 		Py_DECREF(globals);
 		return false;
 	}
@@ -1106,19 +1141,19 @@ AsyncioDAT::executeOnCreateCallback(const std::string& filepath)
 	// Create a Python wrapper object with plugin methods
 	PyObject* wrapper = createAsyncioDATInterface();
 	if (!wrapper) {
-		addStatusMessage("Failed to create Python wrapper for on_create callback");
+		addStatusMessage("Failed to create Python wrapper for on_start callback");
 		Py_DECREF(globals);
 		return false;
 	}
 
-	// Call the on_create function with the wrapper object
+	// Call the on_start function with the wrapper object
 	PyObject* args = PyTuple_Pack(1, wrapper);
 	PyObject* callResult = PyObject_CallObject(onCreateFunc, args);
 	Py_DECREF(args);
 	Py_DECREF(wrapper);
 
 	if (!callResult) {
-		addStatusMessage("Error calling on_create function from: " + filepath);
+		addStatusMessage("Error calling on_start function from: " + filepath);
 		PyErr_Print();
 		Py_DECREF(globals);
 		return false;
@@ -1127,7 +1162,7 @@ AsyncioDAT::executeOnCreateCallback(const std::string& filepath)
 	Py_DECREF(callResult);
 	Py_DECREF(globals);
 
-	addStatusMessage("Successfully called on_create from: " + filepath);
+	addStatusMessage("Successfully called on_start from: " + filepath);
 	return true;
 }
 
@@ -1237,7 +1272,7 @@ class AsyncioDATInterface:
         # Store the C++ instance pointer (not used directly, just for reference)
         self._instance_ptr = instance_ptr
     
-    def add_plugin(self, name, obj):
+    def set_plugin(self, name, obj):
         """Add a plugin to the AsyncioDAT instance"""
         # Call the global Python function that delegates to C++
         # Pass arguments as separate parameters, not as a tuple
