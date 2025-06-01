@@ -1,0 +1,13 @@
+# this is a template config that if required will be loaded if named config.toml
+# is located beside the .toe file loading the AsyncioDAT
+[main]
+# List of paths to be prepended to sys.path
+paths = [
+    "some_path/to/some_module",
+    "another/path/to/env/Lib/site-packages",
+    ".venv/Lib/site-packages"
+]
+
+[asyncio] 
+# Path to a module that contains an `on_construct(asyncio_dat)` function
+callback_module_path = "on_asyncio_create.py"

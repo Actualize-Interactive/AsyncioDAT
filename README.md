@@ -21,6 +21,40 @@ AsyncioDAT is a C++ TouchDesigner operator that provides a managed asyncio event
 
 3. Open the test TouchDesigner file: `test/test.toe`
 
+## Configuration
+
+### TOML Configuration (Optional)
+
+AsyncioDAT supports loading configuration from a `config.toml` file in the working directory. This allows you to specify custom Python paths and callback locations without modifying code.
+
+Create a `config.toml` file with the following structure:
+
+```toml
+[main]
+paths = [
+    "path/to/your/modules",
+    "another/path/with spaces",
+    ".venv/Lib/site-packages"
+]
+
+[asyncio]
+callback_module_path = "path/to/your/callback.py"
+```
+
+**Configuration sections:**
+
+- `[main]` section:
+  - `paths`: Array of directory paths to prepend to `sys.path` for Python module discovery
+  
+- `[asyncio]` section:
+  - `callback_module_path`: Path to the Python file containing the `on_create` callback function
+
+**Backward Compatibility:**
+
+If no `config.toml` is found, AsyncioDAT falls back to the original behavior:
+- Loads paths from `prepend_to_path.txt`
+- Uses `on_asyncio_create.py` as the callback file
+
 ## Usage
 
 ### Basic Setup

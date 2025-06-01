@@ -32,20 +32,24 @@ PyGetSetDef py_getSets[] =
 const char* py_callbacksDATStubs =
 R"(# AsyncioDAT Python Callbacks
 
-def on_initialize(asyncioDat, success):
-    """Called when the AsyncioDAT is initialized."""
+def on_initialized(asyncio_dat):
+    """Called after the asyncio is initialized."""
     pass
 
-def on_startup(asyncioDat, success):
-    """Called when the AsyncioDAT is started up."""
+def on_poll_begin(asyncio_dat):
+    """Called at the beginning of polling the event loop."""
     pass
 
-def on_pre_shutdown(asyncioDat, success, info):
-    """Called when the AsyncioDAT is shutdown."""
+def on_poll_end(asyncio_dat):
+    """Called at the end of polling the event loop."""
     pass
 
-def on_post_shutdown(asyncioDat, success, info):
-    """Called after the AsyncioDAT has been shutdown."""
+def on_shutdown_begin(asyncio_dat):
+    """Called when the asyncio is shutting down."""
+    pass
+
+def on_shutdown_complete(asyncio_dat):
+    """Called after the asyncio has been shutdown."""
     pass
 
 )";

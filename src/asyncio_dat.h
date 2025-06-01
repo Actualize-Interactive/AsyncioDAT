@@ -1,5 +1,6 @@
 #include "DAT_CPlusPlusBase.h"
 #include <string>
+#include <vector>
 #include <deque>
 #include <cstdint>
 
@@ -54,8 +55,9 @@ public:
 	bool					 hasPlugin(const char* name) const;
 	PyObject*				 getPluginsDict() const { return m_plugins; }
 
-	bool					 executeOnCreateCallback(const std::string& filepath);
+	bool					 invoke_on_start_callback(const std::string& filepath);
 	PyObject*				 createAsyncioDATInterface();
+	void					 loadConfig(const std::string& configPath = "config.toml");
 
 private:
 	const OP_NodeInfo*		 m_nodeInfo;
@@ -63,7 +65,6 @@ private:
 	const char* 			 m_error;
 	std::deque<std::string>  m_status_messages;
 
-	inline static bool       s_called_on_startup = false;
 	bool      				 m_autoPoll;
 	bool      				 m_asyncioInitialized;
 	int32_t    				 m_maxstatusrows;	
@@ -87,6 +88,11 @@ private:
 	uint32_t 				 m_pollEventLoopCount;
 	double    				 m_pollEventLoopDuration;
 
+	std::vector<std::string> m_configPaths;
+	std::string				 m_callbackPath;
+
+	bool					 m_on_poll_begin_active;
+	bool					 m_on_poll_end_active;
 
 
 	void					 makeTable(DAT_Output* output);
@@ -96,6 +102,8 @@ private:
 	void					 releaseActiveInstance();
 
 	void					 prependPath(const std::string& filepath);
+	void					 prependPathsFromConfig(const std::vector<std::string>& paths);
 
+	void 					 invokeNoArgsCallback(const char* callbackName);
 };
 

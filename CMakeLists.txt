@@ -4,10 +4,18 @@ project(AsyncioDAT VERSION 1.0.0 LANGUAGES CXX)
 set(VERBOSE_STATUS OFF CACHE BOOL "Verbose status messages" FORCE)
 set(SUPPRESS_NOT_REFERENCED_WARNINGS ON CACHE BOOL "Suppress not referenced warnings" FORCE)
 
-
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Add toml11 library
+include(FetchContent)
+FetchContent_Declare(
+  toml11
+  GIT_REPOSITORY https://github.com/ToruNiina/toml11.git
+  GIT_TAG v3.8.1
+)
+FetchContent_MakeAvailable(toml11)
 
 # recursively get all .cpp files in the src directory
 file(GLOB_RECURSE SOURCES
@@ -29,6 +37,11 @@ target_include_directories(asyncio_dat PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/ext/Python/Include
 )
 
+# Add platform-specific definitions
+if(NOT WIN32)
+    target_compile_definitions(asyncio_dat PRIVATE __cdecl=)
+endif()
+
 # Add Windows-specific include directory if on Windows
 if(WIN32)
     target_include_directories(asyncio_dat PRIVATE
@@ -46,17 +59,18 @@ if(WIN32)
     # Link against the included Python library
     target_link_libraries(asyncio_dat PRIVATE 
         python311
+        toml11::toml11
     )
 elseif(APPLE)
     # On macOS, use the system Python or the one set up by GitHub Actions
     find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
-    target_link_libraries(asyncio_dat PRIVATE Python3::Python)
+    target_link_libraries(asyncio_dat PRIVATE Python3::Python toml11::toml11)
 else()
     # On other platforms, use pkg-config to find Python
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(PYTHON REQUIRED python3)
     target_include_directories(asyncio_dat PRIVATE ${PYTHON_INCLUDE_DIRS})
-    target_link_libraries(asyncio_dat PRIVATE ${PYTHON_LIBRARIES})
+    target_link_libraries(asyncio_dat PRIVATE ${PYTHON_LIBRARIES} toml11::toml11)
 endif()
 
 # Define output directories
@@ -101,6 +115,6 @@ elseif(APPLE)
     )
 elseif(UNIX)
     # Linux-specific settings
-    target_compile_options(asyncio_dat PRIVATE -Wall -Wextra)
+    target_compile_options(asyncio_dat PRIVATE -Wall -Wextra -Wno-changes-meaning -fpermissive)
 endif()
 
