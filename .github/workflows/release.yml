@@ -74,7 +74,7 @@ jobs:
       if: runner.os == 'Windows'
       uses: softprops/action-gh-release@v1
       with:
-        files: build/bin/AsyncioDAT.dll
+        files: build/bin/Release/AsyncioDAT.dll
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
