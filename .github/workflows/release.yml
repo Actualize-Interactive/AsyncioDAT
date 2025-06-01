@@ -10,9 +10,9 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            asset_name: AsyncioDAT-windows.dll
+            asset_name: AsyncioDAT.dll
           - os: macos-latest
-            asset_name: AsyncioDAT-macos.dylib
+            asset_name: AsyncioDAT.dylib
     
     runs-on: ${{ matrix.os }}
     
