@@ -116,14 +116,21 @@ AsyncioDAT::AsyncioDAT(const OP_NodeInfo* info)
 
 AsyncioDAT::~AsyncioDAT()
 {
-	shutdownAsyncio();
+	// Ensure we clean up properly even if shutdown wasn't called explicitly
+	if (m_asyncioInitialized) {
+		shutdownAsyncio();
+	}
+	
+	// Final cleanup of any remaining Python objects
+	Py_XDECREF(m_plugins);
+	m_plugins = nullptr;
 }
 
 void
 AsyncioDAT::getGeneralInfo(DAT_GeneralInfo* ginfo, const OP_Inputs* inputs, void* reserved1)
 {
 	// We want to cook every frame to process asyncio events
-	ginfo->cookEveryFrameIfAsked = true;
+	// ginfo->cookEveryFrameIfAsked = true;
 	ginfo->cookEveryFrame = m_autoPoll;
 }
 
@@ -468,91 +475,82 @@ AsyncioDAT::initializeAsyncio()
 void
 AsyncioDAT::shutdownAsyncio()
 {
-	invokeNoArgsCallback("on_shutdown_begin");
+	// Skip callbacks if we're not initialized to avoid Python errors during shutdown
+	if (m_asyncioInitialized) {
+		invokeNoArgsCallback("on_shutdown_begin");
+	}
 
-	// Clean up plugins dictionary
-   	clearPlugins();
+	// Clean up plugins dictionary first to avoid circular references
+	clearPlugins();
 	Py_XDECREF(m_plugins);
 	m_plugins = nullptr;
 
+	// Cancel all tasks before stopping the loop
+	if (m_eventLoop && m_asyncioInitialized) {
+		cancelAllTasks();
+	}
+
     if (m_loopRunning && m_eventLoop) {
-        // Try to schedule stop on the loop instead of calling it directly
-        if (m_callSoon && m_stop) {
-            PyObject* stopArgs = PyTuple_Pack(1, m_stop);
-            PyObject* callSoonResult = PyObject_CallObject(m_callSoon, stopArgs);
-            Py_DECREF(stopArgs);
-            if (callSoonResult) {
-                Py_DECREF(callSoonResult);
-                
-                // Give the loop a chance to process the stop callback
-                if (m_runForever) {
-					PyObject* runResult = PyObject_CallObject(m_runForever, nullptr);
-					if (runResult) {
-						Py_DECREF(runResult);
-					} else {
-						PyErr_Print(); // Check for errors if run_forever fails
-					}
-				}
-			} else {
-				PyErr_Print(); // call_soon failed, print the error
-			}
-		}
-        
-        // If that didn't work, try the more aggressive approach
-        if (m_loopRunning && m_stop) {
-            // Set a timeout to prevent indefinite hanging
+        // Simplified shutdown approach for Mac compatibility
+        if (m_stop) {
             PyObject* args = PyTuple_New(0);
             PyObject* result = PyObject_CallObject(m_stop, args);
             Py_DECREF(args);
-            if (result) {
-                Py_DECREF(result);
-            } else {
-				PyErr_Print(); // Direct stop call failed, print the error
-			}
+            Py_XDECREF(result);
+            
+            // Clear any Python errors that might have occurred
+            PyErr_Clear();
         }
-        
         m_loopRunning = false;
     }
 
-    // Cancel any pending tasks before cleanup
-    if (m_eventLoop) {
-        cancelAllTasks();
-    }
-
-	// Clean up Python objects
-	Py_XDECREF(m_runForever);
-	Py_XDECREF(m_stop);
-	Py_XDECREF(m_callSoon);
-	Py_XDECREF(m_runUntilComplete);
-	Py_XDECREF(m_sleep);
-	Py_XDECREF(m_createTask);
-	Py_XDECREF(m_getEventLoop);
-	Py_XDECREF(m_setEventLoop);
-	Py_XDECREF(m_newEventLoop);
-	Py_XDECREF(m_eventLoop);
-	Py_XDECREF(m_asyncioModule);
+	// Clean up Python objects in reverse order of creation
 	Py_XDECREF(m_exceptionHandler);
-
-	m_runForever = nullptr;
-	m_stop = nullptr;
-	m_callSoon = nullptr;
-	m_runUntilComplete = nullptr;
-	m_sleep = nullptr;
-	m_createTask = nullptr;
-	m_getEventLoop = nullptr;
-	m_setEventLoop = nullptr;
-	m_newEventLoop = nullptr;
-	m_eventLoop = nullptr;
-	m_asyncioModule = nullptr;
 	m_exceptionHandler = nullptr;
+	
+	Py_XDECREF(m_runForever);
+	m_runForever = nullptr;
+	
+	Py_XDECREF(m_stop);
+	m_stop = nullptr;
+	
+	Py_XDECREF(m_callSoon);
+	m_callSoon = nullptr;
+	
+	Py_XDECREF(m_runUntilComplete);
+	m_runUntilComplete = nullptr;
+	
+	Py_XDECREF(m_sleep);
+	m_sleep = nullptr;
+	
+	Py_XDECREF(m_createTask);
+	m_createTask = nullptr;
+	
+	Py_XDECREF(m_getEventLoop);
+	m_getEventLoop = nullptr;
+	
+	Py_XDECREF(m_setEventLoop);
+	m_setEventLoop = nullptr;
+	
+	Py_XDECREF(m_newEventLoop);
+	m_newEventLoop = nullptr;
+	
+	// Clean up event loop last
+	Py_XDECREF(m_eventLoop);
+	m_eventLoop = nullptr;
+	
+	// Clean up asyncio module last
+	Py_XDECREF(m_asyncioModule);
+	m_asyncioModule = nullptr;
 
 	if (m_asyncioInitialized) {
 		m_asyncioInitialized = false;
 		releaseActiveInstance();
 		addStatusMessage("Asyncio event loop stopped");
+		
+		// Only call shutdown complete callback if we were initialized
+		invokeNoArgsCallback("on_shutdown_complete");
 	}
-
-	invokeNoArgsCallback("on_shutdown_complete");
 }
 
 bool
@@ -654,9 +652,25 @@ void AsyncioDAT::invokeNoArgsCallback(const char *callbackName)
 }
 
 void
+AsyncioDAT::clearPlugins()
+{
+    if (!m_plugins) {
+        return;
+    }
+
+    // Don't iterate and manually DECREF values - PyDict_Clear handles this correctly
+    PyDict_Clear(m_plugins);
+    
+    // Only add status message if we're still initialized to avoid issues during shutdown
+    if (m_asyncioInitialized) {
+        addStatusMessage("Cleared all plugins");
+    }
+}
+
+void
 AsyncioDAT::cancelAllTasks()
 {
-    if (!m_eventLoop) {
+    if (!m_eventLoop || !m_asyncioInitialized) {
         return;
     }
 
@@ -692,7 +706,8 @@ AsyncioDAT::cancelAllTasks()
             }
             Py_DECREF(asyncioModule);
         }
-        PyErr_Clear(); // Clear any errors from the cancellation process
+        // Always clear errors to prevent hanging
+        PyErr_Clear();
     }
     catch (...) {
         PyErr_Clear();
@@ -947,29 +962,6 @@ AsyncioDAT::getPluginNames() const
 		return names;
 	}
 	return PyList_New(0);
-}
-
-void
-AsyncioDAT::clearPlugins()
-{
-    if (!m_plugins) { // Add this check
-        return;
-    }
-
-    // Existing logic to clear the Python dictionary,
-    // for example, iterating and Py_XDECREF'ing items,
-    // and then PyDict_Clear(m_plugins).
-    // This part assumes m_plugins is a valid PyObject* if it's not nullptr.
-    // For instance:
-    PyObject *key, *value;
-    Py_ssize_t pos = 0;
-    // PyDict_Next is safe with a valid dict, but ensure values are DECREF'd if owned
-    while (PyDict_Next(m_plugins, &pos, &key, &value)) {
-        Py_XDECREF(value); // Assuming values are owned and need to be decref'd
-    }
-    PyDict_Clear(m_plugins); // Clears all items from the dictionary
-
-	addStatusMessage("Cleared all plugins");
 }
 
 bool

@@ -1,6 +1,6 @@
 [main]
 paths = [
-    ".venv/Lib/site-packages",
+    ".venv/lib/python3.11/site-packages",
     "modules",
     "modules/proto"
 ]
