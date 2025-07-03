@@ -130,7 +130,7 @@ void
 AsyncioDAT::getGeneralInfo(DAT_GeneralInfo* ginfo, const OP_Inputs* inputs, void* reserved1)
 {
 	// We want to cook every frame to process asyncio events
-	ginfo->cookEveryFrameIfAsked = true;
+	// ginfo->cookEveryFrameIfAsked = true;
 	ginfo->cookEveryFrame = m_autoPoll;
 }
 
