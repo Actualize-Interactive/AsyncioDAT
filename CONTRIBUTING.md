@@ -46,17 +46,18 @@ cmake --build build --config Release
 ```
 
 On Windows, `build.ps1` wraps these steps. The built operator is copied to
-`test/Plugins/` automatically.
+`tests/td/Plugins/` automatically.
 
 ## Testing
 
 See [TESTING.md](TESTING.md). In short:
 
-- The asyncio/plugin/config logic is exercised by the scripts under
-  `test/test_scripts/` and the gRPC suite in `test/`.
-- A full integration check launches TouchDesigner, runs the test scripts, and
-  reports results — it requires a local TouchDesigner install and cannot run in
-  cloud CI (TouchDesigner needs a license and a GPU).
+- `tests/cpp/` (Catch2) and `tests/python/` (pytest) cover the asyncio / plugin /
+  config logic without TouchDesigner and run in CI.
+- The in-network scripts under `tests/td/test_scripts/` and the integration
+  harness (`run_td_tests.ps1`) launch TouchDesigner, run the scripts, and report
+  results — they require a local TouchDesigner install and cannot run in cloud
+  CI (TouchDesigner needs a license and a GPU).
 
 Please make sure the project builds on your platform and that any behavior you
 changed is covered by or verified against the test scripts before opening a PR.

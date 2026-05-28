@@ -17,9 +17,9 @@ AsyncioDAT is a C++ TouchDesigner operator that provides a managed asyncio event
    .\build.ps1
    ```
 
-2. The DLL will be automatically copied to the `test/Plugins/` directory
+2. The DLL will be automatically copied to the `tests/td/Plugins/` directory
 
-3. Open the test TouchDesigner file: `test/test.toe`
+3. Open the test TouchDesigner file: `tests/td/test.toe`
 
 ## Configuration
 
@@ -203,8 +203,8 @@ AsyncioDAT exposes a Python callbacks DAT with these hooks: `on_initialized`,
 `on_poll_begin`, `on_poll_end`, `on_shutdown_begin`, `on_shutdown_complete`. In
 addition, an `on_start(asyncio_dat)` function in the configured callback module
 (`asyncio_dat_callbacks.py` by default) is called once when the first AsyncioDAT
-instance is created — useful for starting services such as the gRPC server in
-`test/`.
+instance is created — useful for registering plugins or starting background
+services. See `tests/td/asyncio_dat_callbacks.py` for a worked example.
 
 ## Technical Details
 
@@ -339,7 +339,7 @@ headers are included under `ext/td/include/` (see [NOTICE](NOTICE)).
    cmake -B build -DCMAKE_BUILD_TYPE=Release -DPython3_ROOT_DIR="<uv python 3.11 dir>"
    cmake --build build --config Release
    ```
-3. The plugin is built and copied to `test/Plugins/` automatically.
+3. The plugin is built and copied to `tests/td/Plugins/` automatically.
 
 ### Continuous Integration
 
@@ -357,7 +357,9 @@ The project structure:
 - `src/asyncio_dat.cpp/h`: Main operator implementation
 - `src/py_bindings.cpp/h`: Python C API bindings
 - `ext/td/include/`: TouchDesigner Custom Operator SDK headers (see [NOTICE](NOTICE))
-- `test/`: TouchDesigner test files, scripts, and the gRPC example
+- `tests/cpp/`: Catch2 unit tests (no TouchDesigner required)
+- `tests/python/`: pytest suite against a compiled test extension (no TouchDesigner required)
+- `tests/td/`: TouchDesigner project, scripts, and the local integration harness
 - `CMakeLists.txt`: CMake build configuration
 
 ## License
@@ -371,7 +373,7 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
 ## Support
 
 For questions and support:
-- Check the example files in the `test/` directory
-- Review the comprehensive test scripts in `test/test_scripts/` (e.g. `asyncio_test.py`, `test_plugins.py`)
-- See the gRPC example in `test/` ([README_gRPC.md](test/README_gRPC.md))
+- Check the example files under `tests/td/` (e.g. `examples/quickstart.py`)
+- Review the comprehensive test scripts in `tests/td/test_scripts/` (`asyncio_test.py`, `test_plugins.py`)
+- See [TESTING.md](TESTING.md) for the unit tests and the local TouchDesigner integration harness
 - Open an issue on the project repository

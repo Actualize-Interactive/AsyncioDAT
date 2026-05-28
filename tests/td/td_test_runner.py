@@ -43,7 +43,7 @@ def _record(name, passed, detail=""):
 def _add_test_paths():
     import sys
     test_dir = project.folder  # noqa: F821
-    for sub in ("", "test_scripts", "modules", "modules/proto"):
+    for sub in ("", "test_scripts"):
         p = os.path.join(test_dir, sub) if sub else test_dir
         if os.path.isdir(p) and p not in sys.path:
             sys.path.insert(0, p)

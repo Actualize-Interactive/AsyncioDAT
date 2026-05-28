@@ -1,33 +1,35 @@
 # AsyncioDAT Testing Instructions
 
-There are two layers of testing:
+Tests live under `tests/`:
 
-1. **Build** the operator (see [README.md](README.md) → Building from Source) and
-   confirm it loads in TouchDesigner.
-2. **Functional tests** — the Python scripts under `test/test_scripts/` and the
-   gRPC suite in `test/`, run inside TouchDesigner.
+- `tests/cpp/` — Catch2 unit tests (no TouchDesigner needed). *(coming in a later commit)*
+- `tests/python/` — pytest against a compiled test extension (no TouchDesigner needed). *(coming in a later commit)*
+- `tests/td/` — the TouchDesigner project, the in-network test scripts, and the
+  local integration harness (`run_td_tests.ps1`).
 
 > Note: TouchDesigner cannot run in cloud CI (it needs a license and a GPU), so
-> the GitHub Actions workflows only build the operator. Functional tests run
-> against a local TouchDesigner install.
+> the GitHub Actions workflows only build the operator and run the `tests/cpp`
+> and `tests/python` suites. The `tests/td` integration test runs against a
+> local TouchDesigner install.
 
 ## Automated integration test (local)
 
-`run_td_tests.ps1` is a local pre-release gate. It launches TouchDesigner with
-`test/test.toe`, runs the test suites *inside* TouchDesigner, writes a
-`results.json` sentinel, quits TouchDesigner, then parses the results and exits
-non-zero if anything failed.
+`run_td_tests.ps1` is a local pre-release gate. Run the one script and wait for
+pass/fail — it does everything for you: compiles the operator, copies it into
+`tests/td/Plugins/`, launches TouchDesigner with `tests/td/test.toe`, runs the
+test suites *inside* TouchDesigner, writes a `results.json` sentinel, quits
+TouchDesigner, then parses the results and exits non-zero if anything failed.
 
 ```powershell
-# Build the operator and run the full integration test:
-.\run_td_tests.ps1 -Build
+# Build + copy the plugin, run the full integration test, report pass/fail:
+.\run_td_tests.ps1
 
 # Options:
+.\run_td_tests.ps1 -NoBuild      # reuse the already-built plugin (skip compiling)
 .\run_td_tests.ps1 -OpName Asyncio1 -TimeoutSec 180 -SettleFrames 240
-.\run_td_tests.ps1 -Grpc          # also exercise the gRPC server from outside TD
 ```
 
-The in-TD logic lives in `test/td_tests/td_test_runner.py` (`start()` runs the
+The in-TD logic lives in `tests/td/td_test_runner.py` (`start()` runs the
 synchronous suites and schedules `finish()`, which verifies the async smoke test,
 writes `results.json`, and calls `project.quit()`).
 
@@ -42,10 +44,9 @@ Execute DAT that kicks off the runner on start. This is a one-time setup:
 
    ```python
    def onStart():
-       import sys, os
-       td_tests = os.path.join(project.folder, 'td_tests')
-       if td_tests not in sys.path:
-           sys.path.insert(0, td_tests)
+       import sys
+       if project.folder not in sys.path:
+           sys.path.insert(0, project.folder)
        import td_test_runner
        td_test_runner.start()
        return
@@ -67,8 +68,15 @@ Execute DAT that kicks off the runner on start. This is a one-time setup:
    ```
 
 2. **Open TouchDesigner**:
-   - Open `test/test.toe` in TouchDesigner
-   - The AsyncioDAT.dll should be automatically loaded from the Plugins directory
+   - Open `tests/td/test.toe` in TouchDesigner
+   - The plugin is loaded from `tests/td/Plugins/` — TouchDesigner loads Custom
+     Operators from a `Plugins/` folder beside the `.toe`, and there is no way to
+     point it at an arbitrary build directory. `build.ps1` copies the freshly
+     built operator there for you.
+   - **First load after a (re)build:** TouchDesigner shows a modal asking you to
+     approve/trust the newly built Custom Operator before it will load it. Click
+     to approve. This is interactive, so the very first integration-test run
+     after a rebuild may need a manual approval click.
 
 3. **Create an AsyncioDAT Operator**:
    - In the TouchDesigner network, create a new DAT operator
@@ -81,12 +89,12 @@ Execute DAT that kicks off the runner on start. This is a one-time setup:
 
 1. **Load the comprehensive async test**:
    - Create a Text DAT operator
-   - Load the content from `test/test_scripts/asyncio_test.py`
+   - Load the content from `tests/td/test_scripts/asyncio_test.py`
    - Set the Text DAT to Python mode and run it (it calls `run_all_tests()` on load)
 
 2. **Load the plugin test**:
    - Create another Text DAT operator
-   - Load the content from `test/test_scripts/test_plugins.py`
+   - Load the content from `tests/td/test_scripts/test_plugins.py`
    - Run it (it calls `run_all_tests()` on load)
 
 ### Method 2: Manual Testing

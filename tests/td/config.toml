@@ -1,0 +1,6 @@
+# AsyncioDAT configuration, loaded if a file named config.toml sits beside the
+# .toe. See config-template.toml in the repo root for all options.
+
+[asyncio]
+# Module containing on_start() and the other lifecycle callbacks.
+callback_module_path = "asyncio_dat_callbacks.py"

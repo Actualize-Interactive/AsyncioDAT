@@ -405,7 +405,15 @@ FodyWeavers.xsd
 
 # Build directory
 build
-test/Backup
-test/Plugins
-test/*.*.toe
 .vscode
+
+# Obsolete pre-reorg test/ directory (contents moved to tests/td/). Ignored so
+# leftover local autosaves/build output are never committed; safe to delete.
+/test/
+
+# TouchDesigner test project (tests/td): local + build artifacts
+tests/td/Plugins/
+tests/td/Backup/
+tests/td/*.*.toe
+tests/td/results.json
+tests/td/.venv/

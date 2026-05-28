@@ -1,4 +1,4 @@
-# test/test.toe
+# tests/td/test.toe
 
 # This script is used to run the test.toe file in TouchDesigner.
 # It sets the path to the TouchDesigner executable and the .toe file, then runs the .toe file using the TouchDesigner executable.
@@ -23,7 +23,7 @@ if (Test-Path $buildScriptPath) {
 # Set the path to the TouchDesigner executable
 $touchDesignerPath = "C:\Program Files\Derivative\TouchDesigner\bin\TouchDesigner.exe"
 # Set the path to the .toe file
-$toeFilePath = Join-Path $scriptDir "./test/test.toe"
+$toeFilePath = Join-Path $scriptDir "./tests/td/test.toe"
 # Check if the TouchDesigner executable exists
 if (Test-Path $touchDesignerPath) {
     # Check if the .toe file exists

@@ -5,32 +5,32 @@
 
 .DESCRIPTION
     TouchDesigner cannot run in cloud CI (it needs a license and a GPU), so this
-    is a LOCAL pre-release gate. It launches test/test.toe, which must contain a
+    is a LOCAL pre-release gate. It launches tests/td/test.toe, which must contain a
     one-time bootstrap Execute DAT that calls td_test_runner.start() on start
     (see TESTING.md). The runner writes results.json and quits TouchDesigner;
     this script waits for that sentinel, parses it, and exits 0 (pass) or 1
     (fail / timeout).
 
-.PARAMETER Build      Build the operator first (build.ps1) before launching.
-.PARAMETER Toe        Path to the .toe to run. Default: test/test.toe
+.PARAMETER NoBuild    Skip building; use the operator already in tests/td/Plugins/.
+.PARAMETER Toe        Path to the .toe to run. Default: tests/td/test.toe
 .PARAMETER OpName     Name of the AsyncioDAT operator in the project. Default: Asyncio1
 .PARAMETER TimeoutSec How long to wait for results.json. Default: 180
 .PARAMETER SettleFrames Frames the in-TD runner waits for async tasks. Default: 240
 .PARAMETER TdPath     Path to TouchDesigner.exe. Default: newest install found.
-.PARAMETER Grpc       Also run the external gRPC client test while TD is up.
 
 .EXAMPLE
-    .\run_td_tests.ps1 -Build
+    .\run_td_tests.ps1            # builds, copies the plugin, runs, reports pass/fail
+.EXAMPLE
+    .\run_td_tests.ps1 -NoBuild   # reuse the already-built plugin
 #>
 [CmdletBinding()]
 param(
-    [switch] $Build,
-    [string] $Toe = (Join-Path $PSScriptRoot "test/test.toe"),
+    [switch] $NoBuild,
+    [string] $Toe = (Join-Path $PSScriptRoot "tests/td/test.toe"),
     [string] $OpName = "Asyncio1",
     [int]    $TimeoutSec = 180,
     [int]    $SettleFrames = 240,
-    [string] $TdPath = "",
-    [switch] $Grpc
+    [string] $TdPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -48,8 +48,11 @@ function Resolve-TouchDesigner {
     throw "Could not find TouchDesigner.exe. Pass -TdPath or set ASYNCIODAT_TD."
 }
 
-if ($Build) {
-    Write-Host "Building AsyncioDAT..." -ForegroundColor Cyan
+# Build by default so the operator is always freshly compiled AND copied into
+# tests/td/Plugins/ (build.ps1 / CMake POST_BUILD handle the copy). The dev just
+# runs this script; no manual build-or-copy step.
+if (-not $NoBuild) {
+    Write-Host "Building AsyncioDAT (compiles + copies to tests/td/Plugins/)..." -ForegroundColor Cyan
     & (Join-Path $PSScriptRoot "build.ps1")
     if ($LASTEXITCODE -ne 0) { throw "Build failed." }
 }
@@ -73,17 +76,6 @@ $env:ASYNCIODAT_SETTLE_FRAMES = "$SettleFrames"
 Write-Host "Launching TouchDesigner..." -ForegroundColor Cyan
 $proc = Start-Process -FilePath $td -ArgumentList "`"$toeFull`"" -PassThru
 
-$grpcJob = $null
-if ($Grpc) {
-    # Best-effort: exercise the gRPC server (started by on_start) from outside TD.
-    $grpcJob = Start-Job -ScriptBlock {
-        param($dir)
-        Set-Location $dir
-        Start-Sleep -Seconds 5
-        uv run python test_grpc_service.py 2>&1
-    } -ArgumentList (Split-Path -Parent $toeFull)
-}
-
 # Wait for the sentinel or timeout.
 $deadline = (Get-Date).AddSeconds($TimeoutSec)
 $found = $false
@@ -103,11 +95,6 @@ if (-not $proc.HasExited) {
     try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
 }
 
-$grpcOutput = $null
-if ($grpcJob) {
-    $grpcOutput = Receive-Job $grpcJob -Wait -AutoRemoveJob
-}
-
 if (-not $found) {
     Write-Host ""
     Write-Host "FAILED: no results.json after $TimeoutSec s." -ForegroundColor Red
@@ -124,12 +111,6 @@ foreach ($r in $summary.results) {
     Write-Host ("  [{0}] {1} {2}" -f $tag, $r.name, $r.detail) -ForegroundColor $color
 }
 Write-Host ("Total: {0} passed, {1} failed" -f $summary.passed, $summary.failed) -ForegroundColor Cyan
-
-if ($Grpc -and $grpcOutput) {
-    Write-Host ""
-    Write-Host "==== gRPC client output ====" -ForegroundColor Cyan
-    $grpcOutput | ForEach-Object { Write-Host "  $_" }
-}
 
 if ($summary.success) {
     Write-Host "`nAll integration tests passed." -ForegroundColor Green

@@ -101,7 +101,7 @@ endif()
 
 # Add post-build command to copy the library to the Plugins folder
 add_custom_command(TARGET asyncio_dat POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_SOURCE_DIR}/test/Plugins"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_SOURCE_DIR}/tests/td/Plugins"
     COMMENT "Creating Plugins directory"
 )
 
@@ -110,7 +110,7 @@ if(APPLE)
     add_custom_command(TARGET asyncio_dat POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory 
                 "$<TARGET_BUNDLE_DIR:asyncio_dat>" 
-                "${CMAKE_SOURCE_DIR}/test/Plugins/$<TARGET_PROPERTY:asyncio_dat,OUTPUT_NAME>.plugin"
+                "${CMAKE_SOURCE_DIR}/tests/td/Plugins/$<TARGET_PROPERTY:asyncio_dat,OUTPUT_NAME>.plugin"
         COMMENT "Copying AsyncioDAT.plugin bundle to Plugins directory"
     )
 else()
@@ -118,7 +118,7 @@ else()
     add_custom_command(TARGET asyncio_dat POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy 
                 "$<TARGET_FILE:asyncio_dat>" 
-                "${CMAKE_SOURCE_DIR}/test/Plugins/"
+                "${CMAKE_SOURCE_DIR}/tests/td/Plugins/"
         COMMENT "Copying AsyncioDAT to Plugins directory"
     )
 endif()
