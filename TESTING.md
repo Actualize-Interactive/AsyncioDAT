@@ -1,23 +1,63 @@
 # AsyncioDAT Testing Instructions
 
-## Testing the Build System
+There are two layers of testing:
 
-### Workflow Validation
+1. **Build** the operator (see [README.md](README.md) → Building from Source) and
+   confirm it loads in TouchDesigner.
+2. **Functional tests** — the Python scripts under `test/test_scripts/` and the
+   gRPC suite in `test/`, run inside TouchDesigner.
 
-Before testing the AsyncioDAT functionality, you can validate that the CI and Release workflows are properly configured:
+> Note: TouchDesigner cannot run in cloud CI (it needs a license and a GPU), so
+> the GitHub Actions workflows only build the operator. Functional tests run
+> against a local TouchDesigner install.
 
-```bash
-python validate_workflows.py
+## Automated integration test (local)
+
+`run_td_tests.ps1` is a local pre-release gate. It launches TouchDesigner with
+`test/test.toe`, runs the test suites *inside* TouchDesigner, writes a
+`results.json` sentinel, quits TouchDesigner, then parses the results and exits
+non-zero if anything failed.
+
+```powershell
+# Build the operator and run the full integration test:
+.\run_td_tests.ps1 -Build
+
+# Options:
+.\run_td_tests.ps1 -OpName Asyncio1 -TimeoutSec 180 -SettleFrames 240
+.\run_td_tests.ps1 -Grpc          # also exercise the gRPC server from outside TD
 ```
 
-This script checks:
-- YAML structure validity
-- Platform consistency between CI and Release workflows  
-- Artifact path consistency
-- Build tool version consistency
-- Expected artifact presence (AsyncioDAT.dll, AsyncioDAT.dylib)
+The in-TD logic lives in `test/td_tests/td_test_runner.py` (`start()` runs the
+synchronous suites and schedules `finish()`, which verifies the async smoke test,
+writes `results.json`, and calls `project.quit()`).
 
-The validation ensures that both workflows will produce the correct artifacts for Windows (.dll) and macOS (.dylib).
+### One-time wiring (bootstrap Execute DAT)
+
+TouchDesigner runs project code via DAT callbacks, so `test.toe` needs a small
+Execute DAT that kicks off the runner on start. This is a one-time setup:
+
+1. In `test.toe`, add an **Execute DAT** at the root.
+2. Enable its **Start** flag (the `onStart` callback).
+3. Paste:
+
+   ```python
+   def onStart():
+       import sys, os
+       td_tests = os.path.join(project.folder, 'td_tests')
+       if td_tests not in sys.path:
+           sys.path.insert(0, td_tests)
+       import td_test_runner
+       td_test_runner.start()
+       return
+   ```
+
+4. **Save** `test.toe`.
+
+> The bootstrap intentionally lives in the `.toe` (a binary file) rather than in
+> the repo, so it only needs to be wired once. If you prefer to keep `.toe`
+> files untouched, `toeexpand` / `toecollapse` (shipped with TouchDesigner) can
+> inject the Execute DAT without opening the GUI — a possible future enhancement
+> to make this fully turnkey.
 
 ## Setup
 
@@ -33,23 +73,21 @@ The validation ensures that both workflows will produce the correct artifacts fo
 3. **Create an AsyncioDAT Operator**:
    - In the TouchDesigner network, create a new DAT operator
    - Type "Asyncio" in the operator palette to find AsyncioDAT
-   - Name the operator `asynciodat1` (or update the test scripts accordingly)
+   - Name the operator `Asyncio1` (or update the test scripts accordingly)
 
 ## Testing the Implementation
 
 ### Method 1: Using the Test Scripts
 
-1. **Load the simple example**:
-   - Create a textDAT operator
-   - Load the content from `test/simple_example.py`
-   - Set the textDAT to Python mode
-   - Execute the script
+1. **Load the comprehensive async test**:
+   - Create a Text DAT operator
+   - Load the content from `test/test_scripts/asyncio_test.py`
+   - Set the Text DAT to Python mode and run it (it calls `run_all_tests()` on load)
 
-2. **Load the comprehensive test**:
-   - Create another textDAT operator
-   - Load the content from `test/asyncio_test.py`
-   - Set the textDAT to Python mode
-   - Execute the script and run `run_all_tests()`
+2. **Load the plugin test**:
+   - Create another Text DAT operator
+   - Load the content from `test/test_scripts/test_plugins.py`
+   - Run it (it calls `run_all_tests()` on load)
 
 ### Method 2: Manual Testing
 
@@ -60,7 +98,7 @@ The validation ensures that both workflows will produce the correct artifacts fo
    import asyncio
    
    # Get the AsyncioDAT operator
-   asyncio_op = op('asynciodat1')
+   asyncio_op = op('Asyncio1')
    
    # Check status
    print(f"Is running: {asyncio_op.is_running()}")
@@ -90,7 +128,7 @@ The validation ensures that both workflows will produce the correct artifacts fo
 
 ### Method 3: Interactive Testing
 
-1. **Enable Auto Process Events**: Make sure the "Auto Process Events" parameter is enabled on the AsyncioDAT operator
+1. **Enable Auto Poll**: Make sure the "Auto Poll" parameter is enabled on the AsyncioDAT operator
 
 2. **Use the Reset button**: If something goes wrong, use the "Reset" pulse parameter to reinitialize the event loop
 
@@ -113,7 +151,7 @@ The validation ensures that both workflows will produce the correct artifacts fo
    - Verify the plugin DLL is loaded correctly
 
 2. **Tasks not executing**:
-   - Ensure "Auto Process Events" is enabled
+   - Ensure "Auto Poll" is enabled
    - Check that the operator is cooking every frame
    - Verify the async functions are properly defined with `async def`
 

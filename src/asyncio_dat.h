@@ -101,7 +101,6 @@ private:
 	bool					 tryBecomeActiveInstance();
 	void					 releaseActiveInstance();
 
-	void					 prependPath(const std::string& filepath);
 	void					 prependPathsFromConfig(const std::vector<std::string>& paths);
 
 	void 					 invokeNoArgsCallback(const char* callbackName);

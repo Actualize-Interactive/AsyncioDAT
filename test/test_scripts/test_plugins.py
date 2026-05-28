@@ -723,4 +723,9 @@ def test_plugins():
     """Main entry point for running tests in TouchDesigner."""
     return run_all_tests()
 
-run_all_tests()
+# Auto-run when this script is executed directly (e.g. loaded into a Text DAT
+# and run). The integration test runner sets ASYNCIODAT_TEST_IMPORT so it can
+# import this module and call run_all_tests() itself without a double run.
+import builtins as _builtins
+if not getattr(_builtins, "ASYNCIODAT_TEST_IMPORT", False):
+    run_all_tests()

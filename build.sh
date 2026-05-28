@@ -37,25 +37,38 @@ fi
 echo -e "\033[36mConfiguring CMake...\033[0m"
 cd build
 
-# Try to use TouchDesigner's Python first
-TD_PYTHON="/Applications/TouchDesigner.app/Contents/Frameworks/Python.framework/Versions/Current/bin/python3.11"
-if [ -f "$TD_PYTHON" ]; then
-    TD_VERSION=$($TD_PYTHON --version 2>&1 | cut -d' ' -f2)
-    echo -e "\033[33mUsing TouchDesigner's Python $TD_VERSION: $TD_PYTHON\033[0m"
-    
-    if [ "$GENERATE_XCODE" = true ]; then
-        cmake -G Xcode -DPython3_EXECUTABLE="$TD_PYTHON" ..
-    else
-        cmake -DPython3_EXECUTABLE="$TD_PYTHON" ..
+# Resolve a Python 3.11 prefix for CMake. Prefer a uv-managed interpreter
+# (run `uv python install 3.11` once); fall back to TouchDesigner's bundled
+# Python framework if uv is unavailable.
+PYTHON_ROOT=""
+if command -v uv >/dev/null 2>&1; then
+    UV_PYTHON=$(uv python find 3.11 2>/dev/null || true)
+    if [ -n "$UV_PYTHON" ]; then
+        # <prefix>/bin/python3.11 -> <prefix>
+        PYTHON_ROOT=$(dirname "$(dirname "$UV_PYTHON")")
+        echo -e "\033[33mUsing uv Python 3.11: $PYTHON_ROOT\033[0m"
     fi
+fi
+
+if [ -z "$PYTHON_ROOT" ]; then
+    TD_PYTHON="/Applications/TouchDesigner.app/Contents/Frameworks/Python.framework/Versions/Current"
+    if [ -d "$TD_PYTHON" ]; then
+        PYTHON_ROOT="$TD_PYTHON"
+        echo -e "\033[33mUsing TouchDesigner's Python framework: $PYTHON_ROOT\033[0m"
+    else
+        echo -e "\033[33mNo uv or TouchDesigner Python 3.11 found; relying on CMake default discovery (must be 3.11)\033[0m"
+    fi
+fi
+
+CMAKE_PY_ARG=()
+if [ -n "$PYTHON_ROOT" ]; then
+    CMAKE_PY_ARG=(-DPython3_ROOT_DIR="$PYTHON_ROOT")
+fi
+
+if [ "$GENERATE_XCODE" = true ]; then
+    cmake -G Xcode "${CMAKE_PY_ARG[@]}" ..
 else
-    echo -e "\033[33mTouchDesigner Python not found, using system Python\033[0m"
-    
-    if [ "$GENERATE_XCODE" = true ]; then
-        cmake -G Xcode ..
-    else
-        cmake ..
-    fi
+    cmake "${CMAKE_PY_ARG[@]}" ..
 fi
 
 if [ "$GENERATE_XCODE" = true ]; then

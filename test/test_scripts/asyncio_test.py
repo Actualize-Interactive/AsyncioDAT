@@ -287,27 +287,17 @@ def stress_test():
         asyncio_op.add_task(worker_coro)
     print("Stress test tasks added")
 
-# Instructions for use
-# print("""
-# AsyncioDAT Test Script Loaded!
-
-# Available test functions:
-# - run_all_tests()     : Run comprehensive tests
-# - quick_test()        : Run a quick test with a few tasks
-# - stress_test()       : Run stress test with many concurrent tasks
-# - add_simple_task()   : Add a single simple task
-# - add_multiple_tasks(): Add multiple concurrent tasks
-# - manual_process_events(): Manually process events
-# - get_event_loop_info(): Get event loop information
-
 # Example usage in TouchDesigner Python:
-# 1. Make sure you have an AsyncioDAT operator named 'asynciodat1'
-# 2. Enable 'Auto Process Events' on the operator
+# 1. Make sure you have an AsyncioDAT operator named 'Asyncio1'
+# 2. Enable 'Auto Poll' on the operator
 # 3. Run: run_all_tests()
 # 4. Watch the console for async task output
+#
+# The AsyncioDAT operator processes events every frame, so you should see the
+# async tasks executing concurrently.
 
-# The AsyncioDAT operator will automatically process events every frame,
-# so you should see the async tasks executing concurrently!
-# """)
-
-run_all_tests()
+# Auto-run when executed directly. The integration test runner sets
+# ASYNCIODAT_TEST_IMPORT so it can import this module without auto-running.
+import builtins as _builtins
+if not getattr(_builtins, "ASYNCIODAT_TEST_IMPORT", False):
+    run_all_tests()

@@ -12,8 +12,10 @@ test/
 │   ├── proto/
 │   │   ├── test_service_pb2.py     # Generated message classes
 │   │   └── test_service_pb2_grpc.py # Generated service classes
+│   ├── calculator_servicer.py      # CalculatorService implementation
+│   ├── grpc_service_plugin.py      # gRPC server plugin
 │   └── __init__.py
-├── on_asyncio_create.py            # AsyncioDAT plugin with gRPC server
+├── asyncio_dat_callbacks.py        # AsyncioDAT callbacks; on_start starts the gRPC server
 ├── grpc_client.py                  # Interactive gRPC client
 ├── test_grpc_service.py            # Automated test script
 └── config.toml                     # AsyncioDAT configuration
@@ -46,7 +48,7 @@ uv run python -m grpc_tools.protoc --python_out=. --grpc_python_out=. --proto_pa
 ```
 
 ### 3. Run AsyncioDAT with gRPC Plugin
-The gRPC server automatically starts when AsyncioDAT loads the `on_asyncio_create.py` callback module. The server runs on port **50051**.
+The gRPC server automatically starts when AsyncioDAT loads the `asyncio_dat_callbacks.py` callback module (its `on_start` function starts the server). The server runs on port **50051**.
 
 ### 4. Test the Service
 
@@ -103,12 +105,12 @@ paths = [
 ]
 
 [asyncio]
-callback_module_path = "on_asyncio_create.py"
+callback_module_path = "asyncio_dat_callbacks.py"
 ```
 
 ## AsyncioDAT Integration
 
-The `on_asyncio_create.py` file demonstrates:
+The `asyncio_dat_callbacks.py` file demonstrates:
 - Plugin architecture for AsyncioDAT
 - Async gRPC server setup
 - Service registration

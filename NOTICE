@@ -1,0 +1,37 @@
+AsyncioDAT
+Copyright (c) 2025 Keith Lostracco / Actualize Interactive
+
+This product bundles or depends on the following third-party components.
+
+-------------------------------------------------------------------------------
+TouchDesigner Custom Operator SDK headers
+  Files: ext/td/include/CPlusPlus_Common.h, ext/td/include/DAT_CPlusPlusBase.h
+  Copyright (c) Derivative Inc.
+
+These headers are part of the TouchDesigner Custom Operator SDK and are
+redistributed here to allow building the operator without a separate SDK
+download. They remain the property of Derivative Inc. and are governed by
+Derivative's licensing terms, not the MIT license that covers the rest of this
+repository. Newer versions ship with TouchDesigner under
+  Samples/CPlusPlus/DAT/
+in your TouchDesigner installation.
+
+-------------------------------------------------------------------------------
+toml11
+  https://github.com/ToruNiina/toml11 (v3.8.1)
+  Copyright (c) 2017 Toru Niina
+  Licensed under the MIT License.
+
+Fetched at configure time via CMake FetchContent; not vendored in this
+repository.
+
+-------------------------------------------------------------------------------
+CPython
+  https://www.python.org/  (Python 3.11)
+  Copyright (c) 2001-2024 Python Software Foundation. All Rights Reserved.
+  Licensed under the PSF License Agreement.
+
+AsyncioDAT builds against CPython 3.11 headers and links its import library,
+but does NOT redistribute CPython. Provide it locally with a uv-managed
+interpreter (`uv python install 3.11`); TouchDesigner supplies the Python
+runtime when the operator is loaded. See README.md (Building from Source).
