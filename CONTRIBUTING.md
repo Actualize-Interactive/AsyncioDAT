@@ -36,28 +36,27 @@ asyncio event loop in TouchDesigner's CPython 3.11 interpreter.
 
 ### Build
 
-```bash
-# Find the uv-managed Python 3.11 prefix:
-uv python find 3.11
+CMake auto-detects the uv-managed Python 3.11 (see `CMakePresets.json`):
 
-# Configure + build (pass the prefix from the previous command):
-cmake -B build -DPython3_ROOT_DIR="<uv python 3.11 dir>"
-cmake --build build --config Release
+```bash
+cmake --preset dev
+cmake --build --preset dev --target asyncio_dat
 ```
 
-On Windows, `build.ps1` wraps these steps. The built operator is copied to
-`tests/td/Plugins/` automatically.
+`build.ps1` (Windows) and `build.sh` (macOS/Linux) wrap these steps. The built
+operator is copied to `tests/td/Plugins/` automatically.
 
 ## Testing
 
 See [TESTING.md](TESTING.md). In short:
 
 - `tests/cpp/` (Catch2) and `tests/python/` (pytest) cover the asyncio / plugin /
-  config logic without TouchDesigner and run in CI.
+  config logic without TouchDesigner and run in CI. Run them all with one
+  command: `cmake --workflow --preset dev`.
 - The in-network scripts under `tests/td/test_scripts/` and the integration
-  harness (`run_td_tests.ps1`) launch TouchDesigner, run the scripts, and report
-  results — they require a local TouchDesigner install and cannot run in cloud
-  CI (TouchDesigner needs a license and a GPU).
+  harness (`run_td_tests.ps1` / `run_td_tests.sh`) launch TouchDesigner, run the
+  scripts, and report results — they require a local TouchDesigner install and
+  cannot run in cloud CI (TouchDesigner needs a license and a GPU).
 
 Please make sure the project builds on your platform and that any behavior you
 changed is covered by or verified against the test scripts before opening a PR.

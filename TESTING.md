@@ -18,14 +18,17 @@ The `tests/cpp` (Catch2) and `tests/python` (pytest) suites build and run
 without TouchDesigner, and run in CI on Windows and macOS.
 
 ```powershell
-# Configure with tests enabled (point at a uv-managed Python 3.11):
-cmake -B build -DASYNCIODAT_BUILD_TESTS=ON -DPython3_ROOT_DIR="<uv python 3.11 dir>"
-cmake --build build --config Release
+# Configure + build + run ALL unit tests in one command:
+cmake --workflow --preset dev
 
-# Run everything (Catch2 + pytest) through ctest:
-uv pip install -r tests/python/requirements.txt
-ctest --test-dir build -C Release --output-on-failure
+# Re-run just the unit tests after a change:
+ctest --preset dev
 ```
+
+CMake auto-detects the uv Python 3.11 (no paths to pass), and the pytest suite
+is run through `uv run`, so pytest is fetched automatically — nothing to install
+first. (In environments without uv, install `tests/python/requirements.txt` into
+the interpreter and ctest will call `pytest` there instead.)
 
 - `tests/cpp` covers the pure config/TOML parsing.
 - `tests/python` builds a small CPython extension (`asynciodat`) that compiles

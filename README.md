@@ -329,15 +329,17 @@ headers are included under `ext/td/include/` (see [NOTICE](NOTICE)).
 ### Build Steps
 
 1. Clone the repository and install Python 3.11: `uv python install 3.11`
-2. Build:
+2. Build the operator (CMake auto-detects the uv Python 3.11):
    ```powershell
-   # Windows (build.ps1 wraps the CMake steps below)
-   .\build.ps1
+   .\build.ps1     # Windows
    ```
    ```bash
-   # macOS/Linux — pass the uv Python 3.11 prefix (uv python find 3.11)
-   cmake -B build -DCMAKE_BUILD_TYPE=Release -DPython3_ROOT_DIR="<uv python 3.11 dir>"
-   cmake --build build --config Release
+   ./build.sh      # macOS/Linux
+   ```
+   Or with CMake directly (see `CMakePresets.json`):
+   ```bash
+   cmake --preset dev
+   cmake --build --preset dev --target asyncio_dat
    ```
 3. The plugin is built and copied to `tests/td/Plugins/` automatically.
 

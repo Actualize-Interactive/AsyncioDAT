@@ -22,7 +22,7 @@ FetchContent_MakeAvailable(toml11)
 # NOT vendor Python headers/libs. Provide them via a uv-managed interpreter:
 #
 #   uv python install 3.11
-#   cmake -B build -DPython3_ROOT_DIR="<uv python 3.11 dir>"
+#   cmake --preset dev      # CMake auto-detects the uv Python 3.11
 #
 # (A uv-managed CPython ships full headers + import lib in its base prefix; a
 # bare venv does not, since venvs only reference the base interpreter.)
@@ -31,9 +31,37 @@ FetchContent_MakeAvailable(toml11)
 # python311 import library; on macOS it builds a loadable module whose Python
 # symbols resolve against TouchDesigner's interpreter at load time (so no
 # hardcoded framework path is needed).
+#
+# Resolution order:
+#   1. -DPython3_ROOT_DIR=... or -DASYNCIODAT_PYTHON_ROOT=... if you pass one
+#   2. otherwise, auto-detect a uv-managed 3.11 via `uv python find 3.11`
+#   3. otherwise, CMake's normal search (must still be 3.11)
 if(DEFINED ASYNCIODAT_PYTHON_ROOT)
     set(Python3_ROOT_DIR "${ASYNCIODAT_PYTHON_ROOT}")
 endif()
+
+find_program(UV_EXECUTABLE uv)
+
+if(NOT DEFINED Python3_ROOT_DIR AND UV_EXECUTABLE)
+    execute_process(
+        COMMAND "${UV_EXECUTABLE}" python find 3.11
+        OUTPUT_VARIABLE _uv_python
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE _uv_result
+        ERROR_QUIET)
+    if(_uv_result EQUAL 0 AND EXISTS "${_uv_python}")
+        get_filename_component(_uv_dir "${_uv_python}" DIRECTORY)
+        get_filename_component(_uv_dir_name "${_uv_dir}" NAME)
+        # Windows: <root>/python.exe; POSIX: <root>/bin/python3.11
+        if(_uv_dir_name STREQUAL "bin")
+            get_filename_component(_uv_dir "${_uv_dir}" DIRECTORY)
+        endif()
+        set(Python3_ROOT_DIR "${_uv_dir}")
+        set(ASYNCIODAT_PY_VIA_UV ON)
+        message(STATUS "AsyncioDAT: using uv-managed Python at ${Python3_ROOT_DIR}")
+    endif()
+endif()
+
 set(Python3_FIND_STRATEGY LOCATION)
 find_package(Python3 3.11 COMPONENTS Development.Module REQUIRED)
 

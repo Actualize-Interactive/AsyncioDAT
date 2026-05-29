@@ -31,11 +31,20 @@ add_custom_command(TARGET asynciodat_testext POST_BUILD
     COMMENT "Copying asynciodat test extension to tests/python/"
 )
 
-# Run the pytest suite as a ctest test (requires pytest in the interpreter).
-add_test(
-    NAME python_bindings
-    COMMAND ${Python3_EXECUTABLE} -m pytest -q "${CMAKE_CURRENT_SOURCE_DIR}"
-)
-set_tests_properties(python_bindings PROPERTIES
-    DEPENDS asynciodat_testext
-)
+# Run the pytest suite as a ctest test. When uv is available (typical local
+# dev) use `uv run` so pytest is supplied ephemerally — no global install
+# needed. Otherwise (e.g. CI) call pytest in the discovered interpreter, where
+# it must already be installed (see tests/python/requirements.txt).
+if(UV_EXECUTABLE AND ASYNCIODAT_PY_VIA_UV)
+    add_test(
+        NAME python_bindings
+        COMMAND ${UV_EXECUTABLE} run --no-project --python 3.11 --with pytest
+                pytest -q "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+else()
+    add_test(
+        NAME python_bindings
+        COMMAND ${Python3_EXECUTABLE} -m pytest -q "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+endif()
+set_tests_properties(python_bindings PROPERTIES DEPENDS asynciodat_testext)
