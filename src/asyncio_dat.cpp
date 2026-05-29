@@ -1,12 +1,12 @@
 #include "asyncio_dat.h"
 #include "py_bindings.h"
+#include "config.h"
 #include <iostream>
 #include <format>
 #include <chrono>
 #include <fstream>
 #include <vector>
 #include <sstream>
-#include <toml.hpp>
 
 
 
@@ -1072,28 +1072,26 @@ void
 AsyncioDAT::loadConfig(const std::string& configPath)
 {
 	try {
-		// Try to parse the TOML config file
-		const auto data = toml::parse(configPath);
-		
-		// Load paths from [main] section
-		if (data.contains("main")) {
-			const auto main = toml::find(data, "main");
-			if (main.contains("paths")) {
-				const auto paths = toml::find<std::vector<std::string>>(main, "paths");
-				m_configPaths = paths;
-				addStatusMessage("Loaded " + std::to_string(paths.size()) + " paths from " + configPath);
-			}
+		// Read the file, then parse with the pure (unit-tested) parser.
+		std::ifstream file(configPath);
+		if (!file.is_open()) {
+			addStatusMessage("Could not open config " + configPath + " (falling back to default behavior)");
+			return;
 		}
-		
-		// Load callback path from [asyncio] section
-		if (data.contains("asyncio")) {
-			const auto asyncio = toml::find(data, "asyncio");
-			if (asyncio.contains("callback_module_path")) {
-				m_callbackPath = toml::find<std::string>(asyncio, "callback_module_path");
-				addStatusMessage("Using callback path from config: " + m_callbackPath);
-			}
+		std::stringstream buffer;
+		buffer << file.rdbuf();
+
+		const asyncio_dat::Config cfg = asyncio_dat::parse_config_text(buffer.str());
+
+		if (!cfg.paths.empty()) {
+			m_configPaths = cfg.paths;
+			addStatusMessage("Loaded " + std::to_string(cfg.paths.size()) + " paths from " + configPath);
 		}
-		
+		if (cfg.callback_path) {
+			m_callbackPath = *cfg.callback_path;
+			addStatusMessage("Using callback path from config: " + m_callbackPath);
+		}
+
 	} catch (const std::exception& e) {
 		addStatusMessage("Could not load config from " + configPath + ": " + e.what() + " (falling back to default behavior)");
 	}

@@ -411,6 +411,10 @@ build
 # leftover local autosaves/build output are never committed; safe to delete.
 /test/
 
+# Built test extension copied next to the pytest suite
+tests/python/*.pyd
+tests/python/*.so
+
 # TouchDesigner test project (tests/td): local + build artifacts
 tests/td/Plugins/
 tests/td/Backup/

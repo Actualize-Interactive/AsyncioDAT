@@ -1,4 +1,4 @@
-"""In-TouchDesigner integration test runner for AsyncioDAT (Tier 2).
+"""In-TouchDesigner integration test runner for AsyncioDAT.
 
 This runs *inside* TouchDesigner. It is invoked from a one-time bootstrap
 Execute DAT (see TESTING.md), runs the test suites, writes a `results.json`

@@ -153,3 +153,17 @@ install(TARGETS asyncio_dat
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
 )
+
+# --- Unit tests ------------------------------------------------------------
+# tests/cpp  : Catch2 C++ tests (no Python or TouchDesigner needed)
+# tests/python: a CPython extension exposing the bindings + a pytest suite
+# Neither needs TouchDesigner. Configure with -DASYNCIODAT_BUILD_TESTS=ON,
+# build, then run with ctest (pytest must be installed in the interpreter).
+option(ASYNCIODAT_BUILD_TESTS "Build unit tests (Catch2 + pytest extension)" OFF)
+if(ASYNCIODAT_BUILD_TESTS)
+    enable_testing()
+    # The pytest suite needs an interpreter; the extension needs Development.Module.
+    find_package(Python3 3.11 COMPONENTS Interpreter Development.Module REQUIRED)
+    add_subdirectory(tests/cpp)
+    add_subdirectory(tests/python)
+endif()

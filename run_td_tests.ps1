@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-    Tier 2 integration test: launch TouchDesigner, run the AsyncioDAT test
-    suites inside it, and gate the exit code on the result.
+    TouchDesigner integration test: launch TouchDesigner, run the AsyncioDAT
+    test suites inside it, and gate the exit code on the result.
 
 .DESCRIPTION
     TouchDesigner cannot run in cloud CI (it needs a license and a GPU), so this

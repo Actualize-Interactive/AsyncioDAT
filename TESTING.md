@@ -2,8 +2,8 @@
 
 Tests live under `tests/`:
 
-- `tests/cpp/` — Catch2 unit tests (no TouchDesigner needed). *(coming in a later commit)*
-- `tests/python/` — pytest against a compiled test extension (no TouchDesigner needed). *(coming in a later commit)*
+- `tests/cpp/` — Catch2 unit tests (no TouchDesigner needed).
+- `tests/python/` — pytest against a compiled test extension (no TouchDesigner needed).
 - `tests/td/` — the TouchDesigner project, the in-network test scripts, and the
   local integration harness (`run_td_tests.ps1`).
 
@@ -11,6 +11,31 @@ Tests live under `tests/`:
 > the GitHub Actions workflows only build the operator and run the `tests/cpp`
 > and `tests/python` suites. The `tests/td` integration test runs against a
 > local TouchDesigner install.
+
+## Unit tests (no TouchDesigner)
+
+The `tests/cpp` (Catch2) and `tests/python` (pytest) suites build and run
+without TouchDesigner, and run in CI on Windows and macOS.
+
+```powershell
+# Configure with tests enabled (point at a uv-managed Python 3.11):
+cmake -B build -DASYNCIODAT_BUILD_TESTS=ON -DPython3_ROOT_DIR="<uv python 3.11 dir>"
+cmake --build build --config Release
+
+# Run everything (Catch2 + pytest) through ctest:
+uv pip install -r tests/python/requirements.txt
+ctest --test-dir build -C Release --output-on-failure
+```
+
+- `tests/cpp` covers the pure config/TOML parsing.
+- `tests/python` builds a small CPython extension (`asynciodat`) that compiles
+  the real operator sources against a fake `OP_Context`, so the asyncio /
+  plugin / config logic is exercised directly. Once the extension is built you
+  can also run pytest on its own:
+
+  ```powershell
+  uv run --with pytest pytest tests/python
+  ```
 
 ## Automated integration test (local)
 
