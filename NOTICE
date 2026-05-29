@@ -8,11 +8,12 @@ TouchDesigner Custom Operator SDK headers
   Files: ext/td/include/CPlusPlus_Common.h, ext/td/include/DAT_CPlusPlusBase.h
   Copyright (c) Derivative Inc.
 
-These headers are part of the TouchDesigner Custom Operator SDK and are
-redistributed here to allow building the operator without a separate SDK
-download. They remain the property of Derivative Inc. and are governed by
-Derivative's licensing terms, not the MIT license that covers the rest of this
-repository. Newer versions ship with TouchDesigner under
+These headers are part of the TouchDesigner Custom Operator SDK (the C++ DAT
+API, version 4, as shipped with TouchDesigner 2025.32820) and are redistributed
+here to allow building the operator without a separate SDK download. They remain
+the property of Derivative Inc. and are governed by Derivative's licensing
+terms, not the MIT license that covers the rest of this repository. The matching
+or newer versions ship with TouchDesigner under
   Samples/CPlusPlus/DAT/
 in your TouchDesigner installation.
 

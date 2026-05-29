@@ -17,8 +17,9 @@ DLLEXPORT
 void
 FillDATPluginInfo(DAT_PluginInfo *info)
 {
-	// Always return DAT_CPLUSPLUS_API_VERSION in this function.
-	info->apiVersion = DATCPlusPlusAPIVersion;
+	// Always set the API version in this function. (SDK v4+: apiVersion is
+	// private and set via setAPIVersion().)
+	info->setAPIVersion(DATCPlusPlusAPIVersion);
 
 	// The opType is the unique name for this TOP. It must start with a
 	// capital A-Z character, and all the following characters must lower case

@@ -39,6 +39,8 @@
 #include <assert.h>
 #include "CPlusPlus_Common.h"
 
+class DAT_CPlusPlus;
+
 namespace TD
 {
 
@@ -51,20 +53,65 @@ namespace TD
 // from the samples folder in a newer TouchDesigner installation.
 // You may need to upgrade your plugin code in that case, to match
 // the new API requirements
-const int DATCPlusPlusAPIVersion = 3;
+const int DATCPlusPlusAPIVersion = 4 | (OP_CommonAPIVersion << 16);
 
 class DAT_PluginInfo
 {
-public:
+private:
+	// Set it by calling setAPIVersion()
 	int32_t			apiVersion = 0;
+public:
 
-	int32_t			reserved[100];
+	// Returns false if the API version is not supported
+	[[nodiscard]]
+	int32_t
+	getAPIVersion() const
+	{
+		return apiVersion;
+	}
+
+	// Should be called with a value of DATCPlusPlusAPIVersion
+	[[nodiscard]]
+	bool
+	setAPIVersion(int32_t version)
+	{
+		apiVersion = version;
+
+		if (!isAPIVersionSupported(version))
+			return false;
+
+		return true;
+	}
+	[[nodiscard]]
+	bool
+	isAPIVersionSupported(int32_t version)
+	{
+		return checkAPIVersionSupported(version, MinAPIVersion, MaxAPIVersion);
+	}
+
+	int32_t			reserved[100] = {};
 
 	// Information used to describe this plugin as a custom OP.
 	OP_CustomOPInfo	customOPInfo;
 
-	int32_t			reserved2[20];
+	int32_t			reserved2[18] = {};
+
+	static constexpr bool checkPrivateOffsets();
+
+private:
+	// Will be set by the caller of FillDATPluginInfo()
+	const int32_t	MinAPIVersion = 0;
+	const int32_t	MaxAPIVersion = 0;
+	friend class ::DAT_CPlusPlus;
 };
+
+constexpr bool
+DAT_PluginInfo::checkPrivateOffsets()
+{
+	return offsetof(DAT_PluginInfo, apiVersion) == 0 &&
+		offsetof(DAT_PluginInfo, MinAPIVersion) == 408 + sizeof(customOPInfo) + 18 * 4 &&
+		offsetof(DAT_PluginInfo, MaxAPIVersion) == 408 + sizeof(customOPInfo) + 18 * 4 + 4;
+}
 
 class DAT_GeneralInfo
 {
@@ -306,7 +353,7 @@ private:
 
 #pragma pack(pop)
 
-static_assert(offsetof(DAT_PluginInfo, apiVersion) == 0, "Incorrect Alignment");
+static_assert(DAT_PluginInfo::checkPrivateOffsets(), "Incorrect Alignment");
 static_assert(offsetof(DAT_PluginInfo, customOPInfo) == 408, "Incorrect Alignment");
 static_assert(sizeof(DAT_PluginInfo) == 944, "Incorrect Size");
 
