@@ -923,16 +923,20 @@ AsyncioDAT::removePlugin(const char* name)
 		return false;
 	}
 
-	// Remove the object associated with the name
-	int result = PyDict_DelItemString(m_plugins, name);
-	
-	if (result == 0) {
-		addStatusMessage(std::string("Removed plugin: ") + name);
-		return true;
-	} else {
-		addStatusMessage(std::string("Failed to remove plugin: ") + name);
+	// Nothing to remove. PyDict_GetItemString does not set an exception when
+	// the key is absent, so report the miss without poisoning the interpreter
+	// (PyDict_DelItemString on a missing key would set KeyError).
+	if (!PyDict_GetItemString(m_plugins, name)) {
 		return false;
 	}
+
+	if (PyDict_DelItemString(m_plugins, name) == 0) {
+		addStatusMessage(std::string("Removed plugin: ") + name);
+		return true;
+	}
+
+	addStatusMessage(std::string("Failed to remove plugin: ") + name);
+	return false;
 }
 
 PyObject*
@@ -957,9 +961,9 @@ AsyncioDAT::getPluginNames() const
 		return PyList_New(0);
 	}
 
+	// PyDict_Keys returns a new reference, which we hand to the caller as-is.
 	PyObject* names = PyDict_Keys(m_plugins);
 	if (names) {
-		Py_INCREF(names); // Increment reference count before returning
 		return names;
 	}
 	return PyList_New(0);
