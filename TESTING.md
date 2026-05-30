@@ -1,23 +1,102 @@
 # AsyncioDAT Testing Instructions
 
-## Testing the Build System
+Tests live under `tests/`:
 
-### Workflow Validation
+- `tests/cpp/` — Catch2 unit tests (no TouchDesigner needed).
+- `tests/python/` — pytest against a compiled test extension (no TouchDesigner needed).
+- `tests/td/` — the TouchDesigner project, the in-network test scripts, and the
+  local integration harness (`run_td_tests.ps1`).
 
-Before testing the AsyncioDAT functionality, you can validate that the CI and Release workflows are properly configured:
+> Note: TouchDesigner cannot run in cloud CI (it needs a license and a GPU), so
+> the GitHub Actions workflows only build the operator and run the `tests/cpp`
+> and `tests/python` suites. The `tests/td` integration test runs against a
+> local TouchDesigner install.
 
-```bash
-python validate_workflows.py
+## Unit tests (no TouchDesigner)
+
+The `tests/cpp` (Catch2) and `tests/python` (pytest) suites build and run
+without TouchDesigner, and run in CI on Windows and macOS.
+
+```powershell
+# Configure + build + run ALL unit tests in one command:
+cmake --workflow --preset dev
+
+# Re-run just the unit tests after a change:
+ctest --preset dev
 ```
 
-This script checks:
-- YAML structure validity
-- Platform consistency between CI and Release workflows  
-- Artifact path consistency
-- Build tool version consistency
-- Expected artifact presence (AsyncioDAT.dll, AsyncioDAT.dylib)
+CMake auto-detects the uv Python 3.11 (no paths to pass), and the pytest suite
+is run through `uv run`, so pytest is fetched automatically — nothing to install
+first. (In environments without uv, install `tests/python/requirements.txt` into
+the interpreter and ctest will call `pytest` there instead.)
 
-The validation ensures that both workflows will produce the correct artifacts for Windows (.dll) and macOS (.dylib).
+- `tests/cpp` covers the pure config/TOML parsing.
+- `tests/python` builds a small CPython extension (`asynciodat`) that compiles
+  the real operator sources against a fake `OP_Context`, so the asyncio /
+  plugin / config logic is exercised directly. Once the extension is built you
+  can also run pytest on its own:
+
+  ```powershell
+  uv run --with pytest pytest tests/python
+  ```
+
+## Automated integration test (local)
+
+`run_td_tests.ps1` is a local pre-release gate. Run the one script and wait for
+pass/fail — it does everything for you: compiles the operator, copies it into
+`tests/td/Plugins/`, launches TouchDesigner with `tests/td/test.toe`, runs the
+test suites *inside* TouchDesigner, writes a `results.json` sentinel, then
+parses the results, terminates TouchDesigner, and exits non-zero if anything
+failed.
+
+```powershell
+# Build + copy the plugin, run the full integration test, report pass/fail:
+.\run_td_tests.ps1
+
+# Options:
+.\run_td_tests.ps1 -NoBuild      # reuse the already-built plugin (skip compiling)
+.\run_td_tests.ps1 -OpName Asyncio1 -TimeoutSec 180
+```
+
+Two modules implement it. `td_test_runner.py` schedules the suite on the
+operator's loop (`start(asyncio_dat)`) and writes `results.json` when it
+finishes. `asyncio_test.py` *is* the suite: a coroutine that `await`s across
+real frames — the correct way to wait N frames in TouchDesigner — and asserts
+deferred timing, completion order, concurrency, exception isolation,
+cancellation, task results, plugin async behaviour, and parameter mutation over
+frames. The operator is passed in, so neither module needs to know where it
+lives. TouchDesigner is left running; the host script terminates it once the
+sentinel appears.
+
+### One-time wiring (modules + bootstrap Execute DAT)
+
+The test modules are loaded the TouchDesigner way — as DATs under
+`/local/modules`, each synced to its file on disk so the repo stays the source
+of truth:
+
+| Module DAT (`/local/modules/…`) | Synced to file |
+| --- | --- |
+| `td_test_runner` | `tests/td/td_test_runner.py` |
+| `asyncio_test`   | `tests/td/asyncio_test.py` |
+
+(In each DAT, set the **File** parameter to the path above and use **Sync to
+File** so TouchDesigner imports them by name.)
+
+Then add an **Execute DAT** (anywhere) that starts the runner and passes it the
+AsyncioDAT operator — this is the only place that needs to know where the
+operator is:
+
+1. Enable the Execute DAT's **Start** flag (the `onStart` callback).
+2. Paste:
+
+   ```python
+   def onStart():
+       import td_test_runner
+       td_test_runner.start(op('Asyncio1'))   # point at your AsyncioDAT
+       return
+   ```
+
+3. **Save** `test.toe`.
 
 ## Setup
 
@@ -27,29 +106,36 @@ The validation ensures that both workflows will produce the correct artifacts fo
    ```
 
 2. **Open TouchDesigner**:
-   - Open `test/test.toe` in TouchDesigner
-   - The AsyncioDAT.dll should be automatically loaded from the Plugins directory
+   - Open `tests/td/test.toe` in TouchDesigner
+   - The plugin is loaded from `tests/td/Plugins/` — TouchDesigner loads Custom
+     Operators from a `Plugins/` folder beside the `.toe`, and there is no way to
+     point it at an arbitrary build directory. `build.ps1` copies the freshly
+     built operator there for you.
+   - **First load after a (re)build:** TouchDesigner shows a modal asking you to
+     approve/trust the newly built Custom Operator before it will load it. Click
+     to approve. This is interactive, so the very first integration-test run
+     after a rebuild may need a manual approval click.
 
 3. **Create an AsyncioDAT Operator**:
    - In the TouchDesigner network, create a new DAT operator
    - Type "Asyncio" in the operator palette to find AsyncioDAT
-   - Name the operator `asynciodat1` (or update the test scripts accordingly)
+   - Name the operator `Asyncio1` (or update the test scripts accordingly)
 
 ## Testing the Implementation
 
-### Method 1: Using the Test Scripts
+### Method 1: Run the suite manually
 
-1. **Load the simple example**:
-   - Create a textDAT operator
-   - Load the content from `test/simple_example.py`
-   - Set the textDAT to Python mode
-   - Execute the script
+`asyncio_test.run_all_tests(asyncio_dat)` is a coroutine, so schedule it on the
+operator and watch the textport for the `[td-test]` PASS/FAIL lines (replace
+`Asyncio1` with your operator's name):
 
-2. **Load the comprehensive test**:
-   - Create another textDAT operator
-   - Load the content from `test/asyncio_test.py`
-   - Set the textDAT to Python mode
-   - Execute the script and run `run_all_tests()`
+```python
+import asyncio_test                          # DAT under /local/modules
+adat = op('Asyncio1')
+adat.add_task(asyncio_test.run_all_tests(adat))
+```
+
+Or just run `.\run_td_tests.ps1`, which also captures the results to a file.
 
 ### Method 2: Manual Testing
 
@@ -60,7 +146,7 @@ The validation ensures that both workflows will produce the correct artifacts fo
    import asyncio
    
    # Get the AsyncioDAT operator
-   asyncio_op = op('asynciodat1')
+   asyncio_op = op('Asyncio1')
    
    # Check status
    print(f"Is running: {asyncio_op.is_running()}")
@@ -90,7 +176,7 @@ The validation ensures that both workflows will produce the correct artifacts fo
 
 ### Method 3: Interactive Testing
 
-1. **Enable Auto Process Events**: Make sure the "Auto Process Events" parameter is enabled on the AsyncioDAT operator
+1. **Enable Auto Poll**: Make sure the "Auto Poll" parameter is enabled on the AsyncioDAT operator
 
 2. **Use the Reset button**: If something goes wrong, use the "Reset" pulse parameter to reinitialize the event loop
 
@@ -113,7 +199,7 @@ The validation ensures that both workflows will produce the correct artifacts fo
    - Verify the plugin DLL is loaded correctly
 
 2. **Tasks not executing**:
-   - Ensure "Auto Process Events" is enabled
+   - Ensure "Auto Poll" is enabled
    - Check that the operator is cooking every frame
    - Verify the async functions are properly defined with `async def`
 

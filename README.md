@@ -17,9 +17,9 @@ AsyncioDAT is a C++ TouchDesigner operator that provides a managed asyncio event
    .\build.ps1
    ```
 
-2. The DLL will be automatically copied to the `test/Plugins/` directory
+2. The DLL will be automatically copied to the `tests/td/Plugins/` directory
 
-3. Open the test TouchDesigner file: `test/test.toe`
+3. Open the test TouchDesigner file: `tests/td/test.toe`
 
 ## Configuration
 
@@ -47,20 +47,20 @@ callback_module_path = "path/to/your/callback.py"
   - `paths`: Array of directory paths to prepend to `sys.path` for Python module discovery
   
 - `[asyncio]` section:
-  - `callback_module_path`: Path to the Python file containing the `on_create` callback function
+  - `callback_module_path`: Path to the Python file containing the `on_start` callback function (and other lifecycle callbacks)
 
-**Backward Compatibility:**
+**Default behavior (no config.toml):**
 
-If no `config.toml` is found, AsyncioDAT falls back to the original behavior:
-- Loads paths from `prepend_to_path.txt`
-- Uses `on_asyncio_create.py` as the callback file
+If no `config.toml` is found beside the `.toe` file, AsyncioDAT:
+- Does not prepend any extra paths to `sys.path`
+- Loads lifecycle callbacks from `asyncio_dat_callbacks.py` in the working directory (optional — it's fine if the file doesn't exist)
 
 ## Usage
 
 ### Basic Setup
 
 1. Add an AsyncioDAT operator to your TouchDesigner network
-2. Ensure "Auto Process Events" parameter is enabled (default)
+2. Ensure the "Auto Poll" parameter is enabled (default)
 3. The operator will automatically initialize an asyncio event loop
 
 ### Python API
@@ -71,7 +71,7 @@ The AsyncioDAT operator exposes the following methods:
 
 ```python
 # Get reference to the operator
-asyncio_op = op('asynciodat1')
+asyncio_op = op('Asyncio1')
 
 # Initialize asyncio (called automatically)
 asyncio_op.initialize_asyncio()
@@ -79,8 +79,8 @@ asyncio_op.initialize_asyncio()
 # Shutdown asyncio
 asyncio_op.shutdown_asyncio()
 
-# Process events manually (if auto-processing is disabled)
-asyncio_op.process_events()
+# Process events manually (if auto-polling is disabled)
+asyncio_op.poll_event_loop()
 
 # Check if asyncio is running
 is_running = asyncio_op.is_running()
@@ -129,7 +129,7 @@ async def simple_task():
     return "Task result"
 
 # Add to the managed event loop
-op('asynciodat1').add_task(simple_task())
+op('Asyncio1').add_task(simple_task())
 ```
 
 #### Periodic Task
@@ -142,7 +142,7 @@ async def periodic_task():
         count += 1
         await asyncio.sleep(1.0)
 
-op('asynciodat1').add_task(periodic_task())
+op('Asyncio1').add_task(periodic_task())
 ```
 
 #### HTTP Requests with aiohttp
@@ -160,7 +160,7 @@ async def fetch_data(url):
 
 # Fetch data asynchronously without blocking TouchDesigner
 url = "https://httpbin.org/delay/2"
-op('asynciodat1').add_task(fetch_data(url))
+op('Asyncio1').add_task(fetch_data(url))
 ```
 
 #### Concurrent Tasks
@@ -174,18 +174,37 @@ async def worker(worker_id, duration):
 
 # Start multiple workers concurrently
 for i in range(5):
-    op('asynciodat1').add_task(worker(i, random.uniform(1, 3)))
+    op('Asyncio1').add_task(worker(i, random.uniform(1, 3)))
 ```
 
 ### Operator Parameters
 
-- **Auto Process Events**: Toggle automatic event processing every frame (default: enabled)
-- **Reset**: Pulse to shutdown and reinitialize the asyncio event loop
+All parameters live on the **Asyncio** page:
+
+- **Active**: Toggle that initializes (on) or shuts down (off) the managed event loop (default: enabled)
+- **Reset Event Loop**: Pulse to shut down and reinitialize the asyncio event loop
+- **Auto Poll**: Toggle automatic event polling every frame (default: enabled)
+- **Add Stop Task**: Toggle that schedules `loop.stop()` each poll so the loop drains ready tasks via `run_forever` before yielding (default: off)
+- **Max Status Rows**: Maximum number of status messages shown in the output table (default: 10)
+- **Clear Status**: Pulse to clear the status message table
+- **on_poll_begin callback active**: Toggle that enables the `on_poll_begin` callback each frame (default: off)
+- **on_poll_end callback active**: Toggle that enables the `on_poll_end` callback each frame (default: off)
 
 ### Properties
 
 - `loop_running`: Read-only boolean indicating if the event loop is active
 - `asyncio_initialized`: Read-only boolean indicating if asyncio is properly initialized
+- `plugin_names`: Read-only list of registered plugin names
+- `plugins`: Accessor for registered plugins (e.g. `op('Asyncio1').plugins.my_plugin`)
+
+### Lifecycle Callbacks
+
+AsyncioDAT exposes a Python callbacks DAT with these hooks: `on_initialized`,
+`on_poll_begin`, `on_poll_end`, `on_shutdown_begin`, `on_shutdown_complete`. In
+addition, an `on_start(asyncio_dat)` function in the configured callback module
+(`asyncio_dat_callbacks.py` by default) is called once when the first AsyncioDAT
+instance is created — useful for registering plugins or starting background
+services. See `tests/td/asyncio_dat_callbacks.py` for a worked example.
 
 ## Technical Details
 
@@ -298,42 +317,51 @@ The operator's output provides real-time status:
 
 ### Prerequisites
 
-- Visual Studio 2019 or later (Windows)
-- Xcode Command Line Tools (macOS)
-- CMake 3.15 or later
-- TouchDesigner SDK
-- Python development headers
+- CMake 3.25 or later
+- Visual Studio 2019/2022 (Windows) or Xcode Command Line Tools (macOS)
+- **Python 3.11**, provided via [uv](https://docs.astral.sh/uv/): `uv python install 3.11`
+
+TouchDesigner embeds CPython 3.11, so the operator must be built against 3.11.
+Python is **not** vendored in this repository — a uv-managed CPython ships the
+headers and import library CMake needs. The TouchDesigner Custom Operator SDK
+headers are included under `ext/td/include/` (see [NOTICE](NOTICE)).
 
 ### Build Steps
 
-1. Clone the repository
-2. Run the build script:
+1. Clone the repository and install Python 3.11: `uv python install 3.11`
+2. Build the operator (CMake auto-detects the uv Python 3.11):
    ```powershell
-   # Windows
-   .\build.ps1
+   .\build.ps1     # Windows
    ```
    ```bash
-   # macOS/Linux
-   mkdir build && cd build
-   cmake .. -DCMAKE_BUILD_TYPE=Release
-   cmake --build .
+   ./build.sh      # macOS/Linux
    ```
-3. The plugin will be built and copied to the test directory
+   Or with CMake directly (see `CMakePresets.json`):
+   ```bash
+   cmake --preset dev
+   cmake --build --preset dev --target asyncio_dat
+   ```
+3. The plugin is built and copied to `tests/td/Plugins/` automatically.
 
 ### Continuous Integration
 
 The project includes GitHub Actions workflows for:
-- **CI**: Automatic builds on Windows and macOS for every push and pull request
-- **Release**: Automatic building and publishing of artifacts when a release is created
+- **CI**: Automatic builds on Windows and macOS for every push and pull request to `main`
+- **Release**: Automatic building and publishing of artifacts when a release is published
 
-Release artifacts are automatically built and attached to GitHub releases for easy download.
+Release artifacts (`AsyncioDAT-windows.zip` containing `AsyncioDAT.dll`, and
+`AsyncioDAT-macos.zip` containing the `AsyncioDAT.plugin` bundle) are built and
+attached to GitHub releases for easy download.
 
 ### Development
 
 The project structure:
-- `src/AsyncioDAT.cpp/h`: Main operator implementation
+- `src/asyncio_dat.cpp/h`: Main operator implementation
 - `src/py_bindings.cpp/h`: Python C API bindings
-- `test/`: TouchDesigner test files and examples
+- `ext/td/include/`: TouchDesigner Custom Operator SDK headers (see [NOTICE](NOTICE))
+- `tests/cpp/`: Catch2 unit tests (no TouchDesigner required)
+- `tests/python/`: pytest suite against a compiled test extension (no TouchDesigner required)
+- `tests/td/`: TouchDesigner project, scripts, and the local integration harness
 - `CMakeLists.txt`: CMake build configuration
 
 ## License
@@ -347,6 +375,7 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
 ## Support
 
 For questions and support:
-- Check the example files in the `test/` directory
-- Review the comprehensive test script: `test/asyncio_test.py`
+- Check the example files under `tests/td/` (e.g. `examples/quickstart.py`)
+- Review the TouchDesigner integration suite in `tests/td/` (`asyncio_test.py`, run by `td_test_runner.py`)
+- See [TESTING.md](TESTING.md) for the unit tests and the local TouchDesigner integration harness
 - Open an issue on the project repository

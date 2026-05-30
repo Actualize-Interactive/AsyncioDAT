@@ -1,12 +1,12 @@
 #include "asyncio_dat.h"
 #include "py_bindings.h"
+#include "config.h"
 #include <iostream>
 #include <format>
 #include <chrono>
 #include <fstream>
 #include <vector>
 #include <sstream>
-#include <toml.hpp>
 
 
 
@@ -17,8 +17,9 @@ DLLEXPORT
 void
 FillDATPluginInfo(DAT_PluginInfo *info)
 {
-	// Always return DAT_CPLUSPLUS_API_VERSION in this function.
-	info->apiVersion = DATCPlusPlusAPIVersion;
+	// Always set the API version in this function. (SDK v4+: apiVersion is
+	// private and set via setAPIVersion().)
+	info->setAPIVersion(DATCPlusPlusAPIVersion);
 
 	// The opType is the unique name for this TOP. It must start with a
 	// capital A-Z character, and all the following characters must lower case
@@ -922,16 +923,20 @@ AsyncioDAT::removePlugin(const char* name)
 		return false;
 	}
 
-	// Remove the object associated with the name
-	int result = PyDict_DelItemString(m_plugins, name);
-	
-	if (result == 0) {
-		addStatusMessage(std::string("Removed plugin: ") + name);
-		return true;
-	} else {
-		addStatusMessage(std::string("Failed to remove plugin: ") + name);
+	// Nothing to remove. PyDict_GetItemString does not set an exception when
+	// the key is absent, so report the miss without poisoning the interpreter
+	// (PyDict_DelItemString on a missing key would set KeyError).
+	if (!PyDict_GetItemString(m_plugins, name)) {
 		return false;
 	}
+
+	if (PyDict_DelItemString(m_plugins, name) == 0) {
+		addStatusMessage(std::string("Removed plugin: ") + name);
+		return true;
+	}
+
+	addStatusMessage(std::string("Failed to remove plugin: ") + name);
+	return false;
 }
 
 PyObject*
@@ -956,9 +961,9 @@ AsyncioDAT::getPluginNames() const
 		return PyList_New(0);
 	}
 
+	// PyDict_Keys returns a new reference, which we hand to the caller as-is.
 	PyObject* names = PyDict_Keys(m_plugins);
 	if (names) {
-		Py_INCREF(names); // Increment reference count before returning
 		return names;
 	}
 	return PyList_New(0);
@@ -976,96 +981,6 @@ AsyncioDAT::hasPlugin(const char* name) const
 	Py_DECREF(nameKey);
 	
 	return exists == 1;
-}
-
-void
-AsyncioDAT::prependPath(const std::string& filepath)
-{
-    std::ifstream file(filepath);
-    
-    if (!file.is_open()) {
-        addStatusMessage("Could not open " + filepath);
-        return;
-    }
-
-    std::vector<std::string> pathEntries;
-    std::string line;
-    
-    // Read all lines from the file
-    while (std::getline(file, line)) {
-        // Trim whitespace
-        line.erase(0, line.find_first_not_of(" \t\r\n"));
-
-        // Skip lines that start with '#' or are empty
-        if (line.empty() || line[0] == '#') {
-            continue;
-        }
-
-        line.erase(line.find_last_not_of(" \t\r\n") + 1);
-        
-        if (!line.empty()) {
-            pathEntries.push_back(line);
-        }
-    }
-    file.close();
-
-    if (pathEntries.empty()) {
-        addStatusMessage("No valid path entries found in prepend_to_path.txt");
-        return;
-    }
-
-    // Get sys module
-    PyObject* sysModule = PyImport_ImportModule("sys");
-    if (!sysModule) {
-        addStatusMessage("Failed to import sys module");
-        PyErr_Clear();
-        return;
-    }
-
-    // Get sys.path list
-    PyObject* sysPath = PyObject_GetAttrString(sysModule, "path");
-    if (!sysPath || !PyList_Check(sysPath)) {
-        addStatusMessage("Failed to get sys.path");
-        Py_DECREF(sysModule);
-        PyErr_Clear();
-        return;
-    }
-
-    // Prepend each path entry to sys.path if not already present
-    for (const auto& entry : pathEntries) {
-        PyObject* pathStr = PyUnicode_FromString(entry.c_str());
-        if (!pathStr) {
-            addStatusMessage("Failed to create string for path: " + entry);
-            continue;
-        }
-
-        // Check if path already exists in sys.path
-        int contains = PySequence_Contains(sysPath, pathStr);
-        if (contains == -1) {
-            // Error occurred
-            addStatusMessage("Error checking if path exists: " + entry);
-            Py_DECREF(pathStr);
-            PyErr_Clear();
-            continue;
-        }
-
-        if (contains == 0) {
-            // Path doesn't exist, prepend it (insert at index 0)
-            if (PyList_Insert(sysPath, 0, pathStr) == 0) {
-                addStatusMessage("Prepended to sys.path: " + entry);
-            } else {
-                addStatusMessage("Failed to prepend to sys.path: " + entry);
-                PyErr_Clear();
-            }
-        } else {
-            addStatusMessage("Path already in sys.path: " + entry);
-        }
-
-        Py_DECREF(pathStr);
-    }
-
-    Py_DECREF(sysPath);
-    Py_DECREF(sysModule);
 }
 
 bool
@@ -1162,28 +1077,26 @@ void
 AsyncioDAT::loadConfig(const std::string& configPath)
 {
 	try {
-		// Try to parse the TOML config file
-		const auto data = toml::parse(configPath);
-		
-		// Load paths from [main] section
-		if (data.contains("main")) {
-			const auto main = toml::find(data, "main");
-			if (main.contains("paths")) {
-				const auto paths = toml::find<std::vector<std::string>>(main, "paths");
-				m_configPaths = paths;
-				addStatusMessage("Loaded " + std::to_string(paths.size()) + " paths from " + configPath);
-			}
+		// Read the file, then parse with the pure (unit-tested) parser.
+		std::ifstream file(configPath);
+		if (!file.is_open()) {
+			addStatusMessage("Could not open config " + configPath + " (falling back to default behavior)");
+			return;
 		}
-		
-		// Load callback path from [asyncio] section
-		if (data.contains("asyncio")) {
-			const auto asyncio = toml::find(data, "asyncio");
-			if (asyncio.contains("callback_module_path")) {
-				m_callbackPath = toml::find<std::string>(asyncio, "callback_module_path");
-				addStatusMessage("Using callback path from config: " + m_callbackPath);
-			}
+		std::stringstream buffer;
+		buffer << file.rdbuf();
+
+		const asyncio_dat::Config cfg = asyncio_dat::parse_config_text(buffer.str());
+
+		if (!cfg.paths.empty()) {
+			m_configPaths = cfg.paths;
+			addStatusMessage("Loaded " + std::to_string(cfg.paths.size()) + " paths from " + configPath);
 		}
-		
+		if (cfg.callback_path) {
+			m_callbackPath = *cfg.callback_path;
+			addStatusMessage("Using callback path from config: " + m_callbackPath);
+		}
+
 	} catch (const std::exception& e) {
 		addStatusMessage("Could not load config from " + configPath + ": " + e.what() + " (falling back to default behavior)");
 	}

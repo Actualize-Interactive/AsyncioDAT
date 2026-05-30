@@ -72,12 +72,7 @@ PyObject* py_initializeAsyncio(PyObject* self, PyObject* args)
 }
 
 PyObject* py_shutdownAsyncio(PyObject* self, PyObject* args)
-{
-    // if ((AsyncioDAT*)self != g_activeAsyncioInstance) {
-    //     PyErr_SetString(PyExc_RuntimeError, "This method can only be called from the active AsyncioDAT instance");
-    //     return nullptr;
-    // }
-    if (g_activeAsyncioInstance) {
+{    if (g_activeAsyncioInstance) {
         g_activeAsyncioInstance->shutdownAsyncio();
     }
     Py_RETURN_NONE;
@@ -85,11 +80,6 @@ PyObject* py_shutdownAsyncio(PyObject* self, PyObject* args)
 
 PyObject* py_pollEventLoop(PyObject* self, PyObject* args)
 {
-    // if ((AsyncioDAT*)self != g_activeAsyncioInstance) {
-    //     PyErr_SetString(PyExc_RuntimeError, "This method can only be called from the active AsyncioDAT instance");
-    //     return nullptr;
-    // }
-
     if (g_activeAsyncioInstance) {
         bool success = g_activeAsyncioInstance->pollEventLoop();
         return PyBool_FromLong(success ? 1 : 0);
@@ -107,11 +97,6 @@ PyObject* py_getEventLoop(PyObject* self, PyObject* args)
 
 PyObject* py_addAsyncTask(PyObject* self, PyObject* args)
 {
-    // if ((AsyncioDAT*)self != g_activeAsyncioInstance) {
-    //     PyErr_SetString(PyExc_RuntimeError, "This method can only be called from the active AsyncioDAT instance");
-    //     return nullptr;
-    // }
-
     PyObject* coro = nullptr;
     if (!PyArg_ParseTuple(args, "O", &coro)) {
         PyErr_SetString(PyExc_TypeError, "Expected a coroutine object");
@@ -129,11 +114,6 @@ PyObject* py_addAsyncTask(PyObject* self, PyObject* args)
 
 PyObject* py_createAsyncTask(PyObject* self, PyObject* args)
 {
-    // if ((AsyncioDAT*)self != g_activeAsyncioInstance) {
-    //     PyErr_SetString(PyExc_RuntimeError, "This method can only be called from the active AsyncioDAT instance");
-    //     return nullptr;
-    // }
-
     PyObject* coro = nullptr;
     if (!PyArg_ParseTuple(args, "O", &coro)) {
         PyErr_SetString(PyExc_TypeError, "Expected a coroutine object");
@@ -150,11 +130,6 @@ PyObject* py_createAsyncTask(PyObject* self, PyObject* args)
 
 PyObject* py_runCoroutine(PyObject* self, PyObject* args)
 {
-    // if ((AsyncioDAT*)self != g_activeAsyncioInstance) {
-    //     PyErr_SetString(PyExc_RuntimeError, "This method can only be called from the active AsyncioDAT instance");
-    //     return nullptr;
-    // }
-
     PyObject* coro = nullptr;
     if (!PyArg_ParseTuple(args, "O", &coro)) {
         PyErr_SetString(PyExc_TypeError, "Expected a coroutine object");
@@ -308,7 +283,7 @@ class Plugins:
         return self._asyncio_dat.has_plugin(name)
 
     def __dir__(self):
-        names = self._asyncio_dat.get_plugin_names
+        names = self._asyncio_dat.plugin_names
         return list(names) if names else []
 
 Plugins

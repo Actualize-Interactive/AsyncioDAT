@@ -8,6 +8,7 @@ paths = [
     ".venv/Lib/site-packages"
 ]
 
-[asyncio] 
-# Path to a module that contains an `on_construct(asyncio_dat)` function
-callback_module_path = "on_asyncio_create.py"
+[asyncio]
+# Path to a module that contains an `on_start(asyncio_dat)` function (and any
+# other lifecycle callbacks). Defaults to "asyncio_dat_callbacks.py" if omitted.
+callback_module_path = "asyncio_dat_callbacks.py"

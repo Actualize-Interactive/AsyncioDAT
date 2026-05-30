@@ -17,6 +17,62 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(toml11)
 
+# --- Python ----------------------------------------------------------------
+# TouchDesigner embeds CPython 3.11 and supplies python311 at runtime, so we do
+# NOT vendor Python headers/libs. Provide them via a uv-managed interpreter:
+#
+#   uv python install 3.11
+#   cmake --preset dev      # CMake auto-detects the uv Python 3.11
+#
+# (A uv-managed CPython ships full headers + import lib in its base prefix; a
+# bare venv does not, since venvs only reference the base interpreter.)
+#
+# We request the Development.Module component only: on Windows it links the
+# python311 import library; on macOS it builds a loadable module whose Python
+# symbols resolve against TouchDesigner's interpreter at load time (so no
+# hardcoded framework path is needed).
+#
+# Resolution order:
+#   1. -DPython3_ROOT_DIR=... or -DASYNCIODAT_PYTHON_ROOT=... if you pass one
+#   2. otherwise, auto-detect a uv-managed 3.11 via `uv python find 3.11`
+#   3. otherwise, CMake's normal search (must still be 3.11)
+if(DEFINED ASYNCIODAT_PYTHON_ROOT)
+    set(Python3_ROOT_DIR "${ASYNCIODAT_PYTHON_ROOT}")
+endif()
+
+find_program(UV_EXECUTABLE uv)
+
+if(NOT DEFINED Python3_ROOT_DIR AND UV_EXECUTABLE)
+    execute_process(
+        COMMAND "${UV_EXECUTABLE}" python find 3.11
+        OUTPUT_VARIABLE _uv_python
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE _uv_result
+        ERROR_QUIET)
+    if(_uv_result EQUAL 0 AND EXISTS "${_uv_python}")
+        get_filename_component(_uv_dir "${_uv_python}" DIRECTORY)
+        get_filename_component(_uv_dir_name "${_uv_dir}" NAME)
+        # Windows: <root>/python.exe; POSIX: <root>/bin/python3.11
+        if(_uv_dir_name STREQUAL "bin")
+            get_filename_component(_uv_dir "${_uv_dir}" DIRECTORY)
+        endif()
+        set(Python3_ROOT_DIR "${_uv_dir}")
+        set(ASYNCIODAT_PY_VIA_UV ON)
+        message(STATUS "AsyncioDAT: using uv-managed Python at ${Python3_ROOT_DIR}")
+    endif()
+endif()
+
+set(Python3_FIND_STRATEGY LOCATION)
+find_package(Python3 3.11 COMPONENTS Development.Module REQUIRED)
+
+if(NOT Python3_VERSION MATCHES "^3\\.11")
+    message(FATAL_ERROR
+        "TouchDesigner requires Python 3.11, but found ${Python3_VERSION} at "
+        "${Python3_EXECUTABLE}. Install it with 'uv python install 3.11' and "
+        "reconfigure with -DPython3_ROOT_DIR=<uv python 3.11 dir>.")
+endif()
+message(STATUS "AsyncioDAT: using Python ${Python3_VERSION} (${Python3_INCLUDE_DIRS})")
+
 # recursively get all .cpp files in the src directory
 file(GLOB_RECURSE SOURCES
     src/*.cpp
@@ -39,68 +95,17 @@ endif()
 target_include_directories(asyncio_dat PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/ext/td/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/ext/Python/Include
 )
 
-# Add Windows-specific include directory if on Windows
-if(WIN32)
-    target_include_directories(asyncio_dat PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/ext/Python/Include/PC
-    )
+# Link Python (via Development.Module, found above) and toml11 on all platforms.
+target_link_libraries(asyncio_dat PRIVATE
+    Python3::Module
+    toml11::toml11
+)
 
-    target_link_directories(asyncio_dat PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/ext/Python/lib/x64
-    )
-
-    target_link_libraries(asyncio_dat PRIVATE 
-        python311
-        toml11::toml11
-    )
-elseif(APPLE)
-    # On macOS, use TouchDesigner's Python specifically
-    set(TD_PYTHON_EXECUTABLE "/Applications/TouchDesigner.app/Contents/Frameworks/Python.framework/Versions/Current/bin/python3.11")
-    set(TD_PYTHON_INCLUDE_DIR "/Applications/TouchDesigner.app/Contents/Frameworks/Python.framework/Versions/Current/include/python3.11")
-    set(TD_PYTHON_LIBRARY_DIR "/Applications/TouchDesigner.app/Contents/Frameworks/Python.framework/Versions/Current/lib")
-    
-    # Check if TouchDesigner's Python exists, otherwise fall back to system Python
-    if(EXISTS "${TD_PYTHON_EXECUTABLE}" AND EXISTS "${TD_PYTHON_INCLUDE_DIR}")
-        message(STATUS "Using TouchDesigner's Python: ${TD_PYTHON_EXECUTABLE}")
-        
-        # Force CMake to use TouchDesigner's Python by setting the paths explicitly
-        set(Python3_EXECUTABLE "${TD_PYTHON_EXECUTABLE}" CACHE FILEPATH "Path to Python3 executable" FORCE)
-        set(Python3_INCLUDE_DIR "${TD_PYTHON_INCLUDE_DIR}" CACHE PATH "Path to Python3 include directory" FORCE)
-        set(Python3_LIBRARY_DIRS "${TD_PYTHON_LIBRARY_DIR}" CACHE PATH "Path to Python3 library directory" FORCE)
-        
-        # Set the find strategy to prioritize our specified paths
-        set(Python3_FIND_STRATEGY LOCATION)
-        set(Python3_FIND_REGISTRY NEVER)
-        set(Python3_FIND_FRAMEWORK NEVER)
-        
-        find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
-        
-        target_link_libraries(asyncio_dat PRIVATE 
-            Python3::Python
-            toml11::toml11
-        )
-        target_compile_definitions(asyncio_dat PRIVATE __cdecl=)
-    else()
-        message(WARNING "TouchDesigner's Python not found at ${TD_PYTHON_EXECUTABLE}, falling back to system Python")
-        find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
-        target_link_libraries(asyncio_dat PRIVATE 
-            Python3::Python
-            toml11::toml11
-        )
-        target_compile_definitions(asyncio_dat PRIVATE __cdecl=)
-    endif()
-else()
-    # On other platforms, use pkg-config to find Python
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(PYTHON REQUIRED python3)
-    target_include_directories(asyncio_dat PRIVATE ${PYTHON_INCLUDE_DIRS})
-    target_link_libraries(asyncio_dat PRIVATE 
-        ${PYTHON_LIBRARIES}
-        toml11::toml11
-    )
+# TouchDesigner's SDK headers use __cdecl annotations that are only meaningful
+# on MSVC; neutralize them elsewhere.
+if(NOT MSVC)
     target_compile_definitions(asyncio_dat PRIVATE __cdecl=)
 endif()
 
@@ -124,7 +129,7 @@ endif()
 
 # Add post-build command to copy the library to the Plugins folder
 add_custom_command(TARGET asyncio_dat POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_SOURCE_DIR}/test/Plugins"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_SOURCE_DIR}/tests/td/Plugins"
     COMMENT "Creating Plugins directory"
 )
 
@@ -133,7 +138,7 @@ if(APPLE)
     add_custom_command(TARGET asyncio_dat POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory 
                 "$<TARGET_BUNDLE_DIR:asyncio_dat>" 
-                "${CMAKE_SOURCE_DIR}/test/Plugins/$<TARGET_PROPERTY:asyncio_dat,OUTPUT_NAME>.plugin"
+                "${CMAKE_SOURCE_DIR}/tests/td/Plugins/$<TARGET_PROPERTY:asyncio_dat,OUTPUT_NAME>.plugin"
         COMMENT "Copying AsyncioDAT.plugin bundle to Plugins directory"
     )
 else()
@@ -141,7 +146,7 @@ else()
     add_custom_command(TARGET asyncio_dat POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy 
                 "$<TARGET_FILE:asyncio_dat>" 
-                "${CMAKE_SOURCE_DIR}/test/Plugins/"
+                "${CMAKE_SOURCE_DIR}/tests/td/Plugins/"
         COMMENT "Copying AsyncioDAT to Plugins directory"
     )
 endif()
@@ -176,3 +181,17 @@ install(TARGETS asyncio_dat
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
 )
+
+# --- Unit tests ------------------------------------------------------------
+# tests/cpp  : Catch2 C++ tests (no Python or TouchDesigner needed)
+# tests/python: a CPython extension exposing the bindings + a pytest suite
+# Neither needs TouchDesigner. Configure with -DASYNCIODAT_BUILD_TESTS=ON,
+# build, then run with ctest (pytest must be installed in the interpreter).
+option(ASYNCIODAT_BUILD_TESTS "Build unit tests (Catch2 + pytest extension)" OFF)
+if(ASYNCIODAT_BUILD_TESTS)
+    enable_testing()
+    # The pytest suite needs an interpreter; the extension needs Development.Module.
+    find_package(Python3 3.11 COMPONENTS Interpreter Development.Module REQUIRED)
+    add_subdirectory(tests/cpp)
+    add_subdirectory(tests/python)
+endif()

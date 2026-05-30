@@ -1,9 +1,0 @@
-[main]
-paths = [
-    ".venv/lib/python3.11/site-packages",
-    "modules",
-    "modules/proto"
-]
-
-[asyncio]
-callback_module_path = "asyncio_dat_callbacks.py"

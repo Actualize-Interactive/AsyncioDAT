@@ -2,83 +2,76 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main ]
+
+# Some third-party JS actions (e.g. setup-cmake) still ship on Node.js 20; opt
+# their JS actions into Node 24 ahead of the forced cutover (2026-06-02).
+# Remove once all actions ship Node 24.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         os: [windows-latest, macos-latest]
         build_type: [Release]
-    
+
     runs-on: ${{ matrix.os }}
-    
+
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
-      
+      uses: actions/checkout@v6
+
     - name: Setup CMake
       uses: jwlawson/actions-setup-cmake@v2
       with:
         cmake-version: '3.25'
-        
-    - name: Setup Python (Windows)
-      if: runner.os == 'Windows'
-      uses: actions/setup-python@v4
+
+    # TouchDesigner embeds CPython 3.11, so we build against 3.11. setup-python
+    # provides the headers + import library that CMake's Development.Module
+    # component needs (Python itself is not vendored in the repo).
+    - name: Setup Python 3.11
+      uses: actions/setup-python@v6
       with:
         python-version: '3.11'
-        
-    - name: Setup Python (macOS)
-      if: runner.os == 'macOS'
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-        
-    - name: Configure CMake (Windows)
+
+    - name: Configure CMake
+      run: >
+        cmake -B build
+        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
+        -DASYNCIODAT_BUILD_TESTS=ON
+
+    - name: Build project
+      run: cmake --build build --config ${{ matrix.build_type }}
+
+    - name: List build outputs
+      shell: bash
+      run: ls -R build/bin
+
+    # Unit tests (Catch2 + pytest) — no TouchDesigner required.
+    - name: Install test dependencies
+      run: python -m pip install --upgrade pip -r tests/python/requirements.txt
+
+    - name: Run unit tests
+      run: ctest --test-dir build -C ${{ matrix.build_type }} --output-on-failure
+
+    - name: Upload build artifact (Windows)
       if: runner.os == 'Windows'
-      run: |
-        mkdir build
-        cd build
-        cmake .. -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-        
-    - name: Configure CMake (macOS)
-      if: runner.os == 'macOS'
-      run: |
-        mkdir build
-        cd build
-        # Find Python and set CMAKE variables
-        python3-config --cflags
-        python3-config --ldflags
-        cmake .. -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-        
-    - name: Build project (Windows)
-      if: runner.os == 'Windows'
-      run: |
-        cd build
-        cmake --build . --config ${{ matrix.build_type }}
-        echo "Listing build outputs:"
-        dir bin
-        
-    - name: Build project (macOS)
-      if: runner.os == 'macOS'
-      run: |
-        cd build
-        cmake --build . --config ${{ matrix.build_type }}
-        echo "Listing build outputs:"
-        ls -la bin/
-        
-    - name: Upload build artifacts (Windows)
-      if: runner.os == 'Windows'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: AsyncioDAT-windows-${{ matrix.build_type }}
-        path: build/bin/AsyncioDAT.dll
-        
-    - name: Upload build artifacts (macOS)
+        path: build/bin/${{ matrix.build_type }}/AsyncioDAT.dll
+        if-no-files-found: error
+
+    - name: Upload build artifact (macOS)
       if: runner.os == 'macOS'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: AsyncioDAT-macos-${{ matrix.build_type }}
-        path: build/bin/AsyncioDAT.dylib
+        path: build/bin/AsyncioDAT.plugin
+        if-no-files-found: error
