@@ -5,7 +5,7 @@
 # writes, then parses it and exits 0 (pass) or 1 (fail / timeout).
 #
 # Usage: ./run_td_tests.sh [--no-build] [--op NAME] [--timeout SEC]
-#                          [--settle-frames N] [--toe PATH] [--td APP_PATH]
+#                          [--toe PATH] [--td APP_PATH]
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -13,7 +13,6 @@ cd "$(dirname "$0")"
 no_build=0
 op="Asyncio1"
 timeout_sec=180
-settle_frames=240
 toe="tests/td/test.toe"
 td_app="${ASYNCIODAT_TD:-/Applications/TouchDesigner.app}"
 
@@ -22,7 +21,6 @@ while [[ $# -gt 0 ]]; do
         --no-build)      no_build=1; shift ;;
         --op)            op="$2"; shift 2 ;;
         --timeout)       timeout_sec="$2"; shift 2 ;;
-        --settle-frames) settle_frames="$2"; shift 2 ;;
         --toe)           toe="$2"; shift 2 ;;
         --td)            td_app="$2"; shift 2 ;;
         *) echo "Unknown argument: $1" >&2; exit 2 ;;
@@ -51,7 +49,6 @@ rm -f "$results_path"
 
 export ASYNCIODAT_RESULTS="$results_path"
 export ASYNCIODAT_OP="$op"
-export ASYNCIODAT_SETTLE_FRAMES="$settle_frames"
 
 echo "Launching TouchDesigner..."
 "$td_bin" "$toe_full" &
@@ -69,7 +66,7 @@ while [[ $(date +%s) -lt $deadline ]]; do
     sleep 1
 done
 
-# TouchDesigner should self-quit via project.quit(); make sure it's gone.
+# The in-TD runner leaves TouchDesigner running; terminate it now.
 kill "$td_pid" 2>/dev/null || true
 
 if [[ $found -eq 0 ]]; then

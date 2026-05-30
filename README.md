@@ -376,6 +376,6 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
 
 For questions and support:
 - Check the example files under `tests/td/` (e.g. `examples/quickstart.py`)
-- Review the comprehensive test scripts in `tests/td/test_scripts/` (`asyncio_test.py`, `test_plugins.py`)
+- Review the TouchDesigner integration suite in `tests/td/` (`asyncio_test.py`, run by `td_test_runner.py`)
 - See [TESTING.md](TESTING.md) for the unit tests and the local TouchDesigner integration harness
 - Open an issue on the project repository

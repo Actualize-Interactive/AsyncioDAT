@@ -53,10 +53,11 @@ See [TESTING.md](TESTING.md). In short:
 - `tests/cpp/` (Catch2) and `tests/python/` (pytest) cover the asyncio / plugin /
   config logic without TouchDesigner and run in CI. Run them all with one
   command: `cmake --workflow --preset dev`.
-- The in-network scripts under `tests/td/test_scripts/` and the integration
-  harness (`run_td_tests.ps1` / `run_td_tests.sh`) launch TouchDesigner, run the
-  scripts, and report results — they require a local TouchDesigner install and
-  cannot run in cloud CI (TouchDesigner needs a license and a GPU).
+- The integration suite in `tests/td/` (`asyncio_test.py`, driven by
+  `td_test_runner.py`) and the harness (`run_td_tests.ps1` / `run_td_tests.sh`)
+  launch TouchDesigner, run the suite, and report results — they require a local
+  TouchDesigner install and cannot run in cloud CI (TouchDesigner needs a
+  license and a GPU).
 
 Please make sure the project builds on your platform and that any behavior you
 changed is covered by or verified against the test scripts before opening a PR.

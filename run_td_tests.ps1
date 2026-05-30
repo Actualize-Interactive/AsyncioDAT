@@ -7,15 +7,14 @@
     TouchDesigner cannot run in cloud CI (it needs a license and a GPU), so this
     is a LOCAL pre-release gate. It launches tests/td/test.toe, which must contain a
     one-time bootstrap Execute DAT that calls td_test_runner.start() on start
-    (see TESTING.md). The runner writes results.json and quits TouchDesigner;
-    this script waits for that sentinel, parses it, and exits 0 (pass) or 1
-    (fail / timeout).
+    (see TESTING.md). The in-TD runner writes results.json (and leaves
+    TouchDesigner running); this script waits for that sentinel, terminates
+    TouchDesigner, parses the results, and exits 0 (pass) or 1 (fail / timeout).
 
 .PARAMETER NoBuild    Skip building; use the operator already in tests/td/Plugins/.
 .PARAMETER Toe        Path to the .toe to run. Default: tests/td/test.toe
 .PARAMETER OpName     Name of the AsyncioDAT operator in the project. Default: Asyncio1
 .PARAMETER TimeoutSec How long to wait for results.json. Default: 180
-.PARAMETER SettleFrames Frames the in-TD runner waits for async tasks. Default: 240
 .PARAMETER TdPath     Path to TouchDesigner.exe. Default: newest install found.
 
 .EXAMPLE
@@ -29,7 +28,6 @@ param(
     [string] $Toe = (Join-Path $PSScriptRoot "tests/td/test.toe"),
     [string] $OpName = "Asyncio1",
     [int]    $TimeoutSec = 180,
-    [int]    $SettleFrames = 240,
     [string] $TdPath = ""
 )
 
@@ -71,7 +69,6 @@ if (Test-Path $resultsPath) { Remove-Item $resultsPath -Force }
 # The in-TD runner reads these (inherited by the child process).
 $env:ASYNCIODAT_RESULTS = $resultsPath
 $env:ASYNCIODAT_OP = $OpName
-$env:ASYNCIODAT_SETTLE_FRAMES = "$SettleFrames"
 
 Write-Host "Launching TouchDesigner..." -ForegroundColor Cyan
 $proc = Start-Process -FilePath $td -ArgumentList "`"$toeFull`"" -PassThru
@@ -89,7 +86,7 @@ while ((Get-Date) -lt $deadline) {
     Start-Sleep -Milliseconds 500
 }
 
-# Make sure TouchDesigner is gone (it should self-quit via project.quit).
+# The in-TD runner leaves TouchDesigner running; terminate it now.
 if (-not $proc.HasExited) {
     Write-Host "Stopping TouchDesigner..." -ForegroundColor DarkGray
     try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}

@@ -45,8 +45,9 @@ the interpreter and ctest will call `pytest` there instead.)
 `run_td_tests.ps1` is a local pre-release gate. Run the one script and wait for
 pass/fail — it does everything for you: compiles the operator, copies it into
 `tests/td/Plugins/`, launches TouchDesigner with `tests/td/test.toe`, runs the
-test suites *inside* TouchDesigner, writes a `results.json` sentinel, quits
-TouchDesigner, then parses the results and exits non-zero if anything failed.
+test suites *inside* TouchDesigner, writes a `results.json` sentinel, then
+parses the results, terminates TouchDesigner, and exits non-zero if anything
+failed.
 
 ```powershell
 # Build + copy the plugin, run the full integration test, report pass/fail:
@@ -54,39 +55,48 @@ TouchDesigner, then parses the results and exits non-zero if anything failed.
 
 # Options:
 .\run_td_tests.ps1 -NoBuild      # reuse the already-built plugin (skip compiling)
-.\run_td_tests.ps1 -OpName Asyncio1 -TimeoutSec 180 -SettleFrames 240
+.\run_td_tests.ps1 -OpName Asyncio1 -TimeoutSec 180
 ```
 
-The in-TD logic lives in `tests/td/td_test_runner.py` (`start()` runs the
-synchronous suites and schedules `finish()`, which verifies the async smoke test,
-writes `results.json`, and calls `project.quit()`).
+Two modules implement it. `td_test_runner.py` schedules the suite on the
+operator's loop (`start(asyncio_dat)`) and writes `results.json` when it
+finishes. `asyncio_test.py` *is* the suite: a coroutine that `await`s across
+real frames — the correct way to wait N frames in TouchDesigner — and asserts
+deferred timing, completion order, concurrency, exception isolation,
+cancellation, task results, plugin async behaviour, and parameter mutation over
+frames. The operator is passed in, so neither module needs to know where it
+lives. TouchDesigner is left running; the host script terminates it once the
+sentinel appears.
 
-### One-time wiring (bootstrap Execute DAT)
+### One-time wiring (modules + bootstrap Execute DAT)
 
-TouchDesigner runs project code via DAT callbacks, so `test.toe` needs a small
-Execute DAT that kicks off the runner on start. This is a one-time setup:
+The test modules are loaded the TouchDesigner way — as DATs under
+`/local/modules`, each synced to its file on disk so the repo stays the source
+of truth:
 
-1. In `test.toe`, add an **Execute DAT** at the root.
-2. Enable its **Start** flag (the `onStart` callback).
-3. Paste:
+| Module DAT (`/local/modules/…`) | Synced to file |
+| --- | --- |
+| `td_test_runner` | `tests/td/td_test_runner.py` |
+| `asyncio_test`   | `tests/td/asyncio_test.py` |
+
+(In each DAT, set the **File** parameter to the path above and use **Sync to
+File** so TouchDesigner imports them by name.)
+
+Then add an **Execute DAT** (anywhere) that starts the runner and passes it the
+AsyncioDAT operator — this is the only place that needs to know where the
+operator is:
+
+1. Enable the Execute DAT's **Start** flag (the `onStart` callback).
+2. Paste:
 
    ```python
    def onStart():
-       import sys
-       if project.folder not in sys.path:
-           sys.path.insert(0, project.folder)
        import td_test_runner
-       td_test_runner.start()
+       td_test_runner.start(op('Asyncio1'))   # point at your AsyncioDAT
        return
    ```
 
-4. **Save** `test.toe`.
-
-> The bootstrap intentionally lives in the `.toe` (a binary file) rather than in
-> the repo, so it only needs to be wired once. If you prefer to keep `.toe`
-> files untouched, `toeexpand` / `toecollapse` (shipped with TouchDesigner) can
-> inject the Execute DAT without opening the GUI — a possible future enhancement
-> to make this fully turnkey.
+3. **Save** `test.toe`.
 
 ## Setup
 
@@ -113,17 +123,19 @@ Execute DAT that kicks off the runner on start. This is a one-time setup:
 
 ## Testing the Implementation
 
-### Method 1: Using the Test Scripts
+### Method 1: Run the suite manually
 
-1. **Load the comprehensive async test**:
-   - Create a Text DAT operator
-   - Load the content from `tests/td/test_scripts/asyncio_test.py`
-   - Set the Text DAT to Python mode and run it (it calls `run_all_tests()` on load)
+`asyncio_test.run_all_tests(asyncio_dat)` is a coroutine, so schedule it on the
+operator and watch the textport for the `[td-test]` PASS/FAIL lines (replace
+`Asyncio1` with your operator's name):
 
-2. **Load the plugin test**:
-   - Create another Text DAT operator
-   - Load the content from `tests/td/test_scripts/test_plugins.py`
-   - Run it (it calls `run_all_tests()` on load)
+```python
+import asyncio_test                          # DAT under /local/modules
+adat = op('Asyncio1')
+adat.add_task(asyncio_test.run_all_tests(adat))
+```
+
+Or just run `.\run_td_tests.ps1`, which also captures the results to a file.
 
 ### Method 2: Manual Testing
 
