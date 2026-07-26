@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Usage, parameters, and the Python API
+    url: https://github.com/Actualize-Interactive/AsyncioDAT#readme
+    about: The README covers installation, every parameter, and the full Python API — worth checking before filing.
+  - name: Report a security vulnerability
+    url: https://github.com/Actualize-Interactive/AsyncioDAT/security/advisories/new
+    about: Please report security issues privately, not as a public issue.

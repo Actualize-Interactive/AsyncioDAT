@@ -1,5 +1,10 @@
 # AsyncioDAT - Asyncio Event Loop for TouchDesigner
 
+[![CI](https://github.com/Actualize-Interactive/AsyncioDAT/actions/workflows/ci.yml/badge.svg)](https://github.com/Actualize-Interactive/AsyncioDAT/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)
+![TouchDesigner 2025.32820](https://img.shields.io/badge/TouchDesigner-2025.32820-orange.svg)
+
 AsyncioDAT is a C++ TouchDesigner operator that provides a managed asyncio event loop for Python scripting within TouchDesigner. It enables truly asynchronous programming without blocking the main TouchDesigner thread.
 
 ## Features
@@ -10,16 +15,56 @@ AsyncioDAT is a C++ TouchDesigner operator that provides a managed asyncio event
 - **Easy Python Integration**: Simple Python API for adding coroutines and managing async tasks
 - **Comprehensive Error Handling**: Robust error handling and recovery mechanisms
 
+## Requirements
+
+- **TouchDesigner 2025.32820** or newer. The operator is built against Custom
+  Operator SDK v4 and TouchDesigner's embedded CPython **3.11**.
+- **Windows 10/11**, or **macOS on Apple Silicon**. The macOS build is arm64
+  only, matching TouchDesigner.
+
 ## Installation
 
-1. Build the project using the provided PowerShell script:
-   ```powershell
-   .\build.ps1
+### From a release (no build required)
+
+1. Download the asset for your platform from the
+   [latest release](https://github.com/Actualize-Interactive/AsyncioDAT/releases/latest)
+   and extract it:
+
+   | Platform | Asset | Contents |
+   | --- | --- | --- |
+   | Windows | `AsyncioDAT-windows.zip` | `AsyncioDAT.dll` |
+   | macOS | `AsyncioDAT-macos.zip` | `AsyncioDAT.plugin` bundle |
+
+2. Put the operator in a **`Plugins/` folder beside your `.toe`**. TouchDesigner
+   loads Custom Operators from a `Plugins/` directory next to the project file;
+   there is no way to point it at an arbitrary directory. (A `Plugins/` folder
+   in your TouchDesigner user directory — `Documents/Derivative/Plugins/` —
+   works too, and makes the operator available to every project.)
+
+   ```text
+   MyProject/
+   ├── MyProject.toe
+   └── Plugins/
+       └── AsyncioDAT.dll        # or AsyncioDAT.plugin on macOS
    ```
 
-2. The DLL will be automatically copied to the `tests/td/Plugins/` directory
+3. **macOS only:** the downloaded bundle carries a quarantine attribute and is
+   not signed or notarized, so TouchDesigner will refuse to load it until you
+   clear the attribute:
 
-3. Open the test TouchDesigner file: `tests/td/test.toe`
+   ```bash
+   xattr -dr com.apple.quarantine Plugins/AsyncioDAT.plugin
+   ```
+
+4. Open your project. On first load, TouchDesigner shows a modal asking you to
+   **approve/trust** the Custom Operator — accept it. Then add an **Asyncio**
+   DAT from the operator palette.
+
+### From source
+
+See [Building from Source](#building-from-source) below. `build.ps1` /
+`build.sh` copy the freshly built operator into `tests/td/Plugins/`, so the
+bundled test project (`tests/td/test.toe`) picks it up.
 
 ## Configuration
 
@@ -113,7 +158,47 @@ loop = asyncio_op.get_event_loop()
 # Use the loop directly for advanced operations
 if loop:
     loop.call_later(5.0, lambda: print("Called after 5 seconds"))
+
+# Number of callbacks currently ready to run on the loop
+pending = asyncio_op.get_callback_count()
 ```
+
+#### Plugin Registry
+
+The operator holds a dictionary of named Python objects that outlives any single
+script — useful for keeping a client, a connection pool, or a service object
+alive across cooks. Register them from `on_start` (see
+[Lifecycle Callbacks](#lifecycle-callbacks)) and reach them from anywhere.
+
+```python
+asyncio_op = op('Asyncio1')
+
+# Register / replace. Returns True on success; re-registering a name replaces
+# the previous object and releases the reference to it.
+asyncio_op.set_plugin('my_service', MyService())
+
+# Look up. Returns None if the name is not registered.
+service = asyncio_op.get_plugin('my_service')
+
+asyncio_op.has_plugin('my_service')     # -> True
+asyncio_op.del_plugin('my_service')     # -> True, or False if it wasn't there
+asyncio_op.clear_plugins()              # remove all of them
+```
+
+The `plugins` property is an attribute-style view over the same registry, and
+`plugin_names` lists the registered names:
+
+```python
+asyncio_op.plugins.my_service = MyService()   # same as set_plugin
+service = asyncio_op.plugins.my_service       # AttributeError if not registered
+del asyncio_op.plugins.my_service             # same as del_plugin
+
+'my_service' in asyncio_op.plugins            # -> bool
+asyncio_op.plugin_names                       # -> list of names
+```
+
+These methods act on whichever AsyncioDAT instance owns the event loop, so
+calling them before one is active raises `RuntimeError`.
 
 ### Example Usage
 
@@ -290,7 +375,7 @@ async def robust_task():
    - Try using the Reset pulse parameter
 
 2. **Tasks Not Executing**
-   - Verify "Auto Process Events" is enabled
+   - Verify "Auto Poll" is enabled
    - Check the operator's status output for error messages
    - Ensure the operator is cooking every frame
 
@@ -306,12 +391,16 @@ async def robust_task():
 
 ### Debug Information
 
-The operator's output provides real-time status:
-- Execute count (frames processed)
-- Asyncio initialization status
-- Event loop running state
-- Auto-processing state
-- Available methods list
+The operator's output table carries the most recent status messages (how many is
+set by **Max Status Rows**), and the same messages go to the textport. Attach an
+Info CHOP to the operator for live counters:
+
+| Channel | Meaning |
+| --- | --- |
+| `event_loop_active` | 1 while asyncio is initialized |
+| `event_loop_auto_poll` | 1 while **Auto Poll** is on |
+| `event_loop_poll_count` | Frames polled since initialization |
+| `event_loop_poll_duration` | Time spent in the last poll, in milliseconds |
 
 ## Building from Source
 
@@ -346,18 +435,23 @@ headers are included under `ext/td/include/` (see [NOTICE](NOTICE)).
 ### Continuous Integration
 
 The project includes GitHub Actions workflows for:
-- **CI**: Automatic builds on Windows and macOS for every push and pull request to `main`
-- **Release**: Automatic building and publishing of artifacts when a release is published
+- **CI**: builds and runs the unit suites on Windows and macOS for every push and
+  pull request to `main`
+- **Release**: triggered by pushing a `v*.*.*` tag. It builds, tests, and
+  packages on both platforms before publishing anything, and takes the release
+  notes from the matching [CHANGELOG.md](CHANGELOG.md) entry. See
+  [CONTRIBUTING.md](CONTRIBUTING.md#releasing).
 
 Release artifacts (`AsyncioDAT-windows.zip` containing `AsyncioDAT.dll`, and
-`AsyncioDAT-macos.zip` containing the `AsyncioDAT.plugin` bundle) are built and
-attached to GitHub releases for easy download.
+`AsyncioDAT-macos.zip` containing the `AsyncioDAT.plugin` bundle) are attached
+to GitHub releases for easy download.
 
 ### Development
 
 The project structure:
 - `src/asyncio_dat.cpp/h`: Main operator implementation
 - `src/py_bindings.cpp/h`: Python C API bindings
+- `src/config.cpp/h`: `config.toml` parsing
 - `ext/td/include/`: TouchDesigner Custom Operator SDK headers (see [NOTICE](NOTICE))
 - `tests/cpp/`: Catch2 unit tests (no TouchDesigner required)
 - `tests/python/`: pytest suite against a compiled test extension (no TouchDesigner required)
@@ -366,11 +460,16 @@ The project structure:
 
 ## License
 
-This project is licensed under the MIT License. See LICENSE file for details.
+This project is licensed under the MIT License — see [LICENSE](LICENSE). Bundled
+and third-party components are attributed in [NOTICE](NOTICE).
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit pull requests or open issues for bugs and feature requests.
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the build,
+test, and pull request expectations. Security issues go through
+[private reporting](SECURITY.md), not a public issue.
+
+Release-by-release changes are recorded in [CHANGELOG.md](CHANGELOG.md).
 
 ## Support
 

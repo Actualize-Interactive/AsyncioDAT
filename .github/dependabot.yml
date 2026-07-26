@@ -1,0 +1,29 @@
+version: 2
+
+updates:
+  # Keep the workflow actions current. The only package-manager manifest in the
+  # repository is the pytest requirements file below: the C++ dependency
+  # (toml11) is pinned as a FetchContent git tag in CMakeLists.txt, which
+  # Dependabot cannot parse, so it is bumped by hand.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "ci"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  # Test-only Python dependencies (pytest and friends).
+  - package-ecosystem: "pip"
+    directory: "/tests/python"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "test"
+    groups:
+      pytest:
+        patterns:
+          - "*"

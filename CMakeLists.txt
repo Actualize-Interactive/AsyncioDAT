@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(AsyncioDAT VERSION 1.0.0 LANGUAGES CXX)
+project(AsyncioDAT VERSION 0.4.0 LANGUAGES CXX)
 
 set(VERBOSE_STATUS OFF CACHE BOOL "Verbose status messages" FORCE)
 set(SUPPRESS_NOT_REFERENCED_WARNINGS ON CACHE BOOL "Suppress not referenced warnings" FORCE)
@@ -165,6 +165,7 @@ elseif(APPLE)
         BUNDLE TRUE
         BUNDLE_EXTENSION "plugin"
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.actualize.asyncio-dat"
+        MACOSX_BUNDLE_BUNDLE_NAME "AsyncioDAT"
         MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
         MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in"

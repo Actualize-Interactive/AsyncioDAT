@@ -1,0 +1,37 @@
+name: Feature request
+description: Suggest a capability, parameter, or API addition
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: >
+        Describe the use case rather than the implementation. What are you
+        trying to do in TouchDesigner that the operator makes hard or
+        impossible today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed API
+      description: >
+        If you have a shape in mind, sketch it — a Python method, a getset, an
+        operator parameter, or a callback. Additive changes are much easier to
+        accept than changes to existing signatures or parameter names, which
+        break saved `.toe` files.
+      render: python
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: >
+        Anything you tried, or workarounds you are using now — including
+        whether it can already be done through `get_event_loop()`.
+    validations:
+      required: false

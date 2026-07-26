@@ -271,10 +271,4 @@ asyncio_op.add_task(heartbeat())
 
 ## Performance Monitoring
 
-The AsyncioDAT operator provides real-time statistics:
-- Execute count (frames processed)
-- Event loop status
-- Auto-processing state
-- Available methods
-
-Monitor these values to ensure proper operation and identify potential issues.
+Attach an Info CHOP to the AsyncioDAT operator for real-time statistics: `event_loop_active`, `event_loop_auto_poll`, `event_loop_poll_count`, and `event_loop_poll_duration` (milliseconds spent in the last poll). Monitor these values to ensure proper operation and identify potential issues — a poll duration that climbs with the number of tasks is the signal that something in a coroutine is blocking rather than awaiting.
