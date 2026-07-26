@@ -5,73 +5,67 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
-# Some third-party JS actions (e.g. setup-cmake) still ship on Node.js 20; opt
-# their JS actions into Node 24 ahead of the forced cutover (2026-06-02).
-# Remove once all actions ship Node 24.
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+permissions:
+  contents: read
 
 jobs:
   build:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
-      fail-fast: false
       matrix:
         os: [windows-latest, macos-latest]
-        build_type: [Release]
-
-    runs-on: ${{ matrix.os }}
+      fail-fast: false
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v6
+    - uses: actions/checkout@v7
 
-    - name: Setup CMake
-      uses: jwlawson/actions-setup-cmake@v2
+    - name: Setup cmake
+      uses: lukka/get-cmake@v4.4.0
       with:
-        cmake-version: '3.25'
+        cmakeVersion: '4.4.0'
 
     # TouchDesigner embeds CPython 3.11, so we build against 3.11. setup-python
-    # provides the headers + import library that CMake's Development.Module
-    # component needs (Python itself is not vendored in the repo).
+    # provides the headers and import library that CMake's Development.Module
+    # component needs (Python itself is not vendored in the repository).
     - name: Setup Python 3.11
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@v7
       with:
         python-version: '3.11'
 
     - name: Configure CMake
       run: >
-        cmake -B build
-        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        cmake -B build -S .
+        -DCMAKE_BUILD_TYPE=Release
         -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
         -DASYNCIODAT_BUILD_TESTS=ON
 
-    - name: Build project
-      run: cmake --build build --config ${{ matrix.build_type }}
+    - name: Build
+      run: cmake --build build --config Release --parallel 2
 
-    - name: List build outputs
-      shell: bash
-      run: ls -R build/bin
-
-    # Unit tests (Catch2 + pytest) — no TouchDesigner required.
+    # tests/cpp (Catch2) and tests/python (pytest) only — the tests/td
+    # integration suite needs a licensed TouchDesigner and a GPU, so it runs
+    # locally via run_td_tests.ps1 / run_td_tests.sh instead.
     - name: Install test dependencies
       run: python -m pip install --upgrade pip -r tests/python/requirements.txt
 
-    - name: Run unit tests
-      run: ctest --test-dir build -C ${{ matrix.build_type }} --output-on-failure
+    - name: Test
+      run: ctest --test-dir build -C Release --output-on-failure
 
     - name: Upload build artifact (Windows)
       if: runner.os == 'Windows'
       uses: actions/upload-artifact@v7
       with:
-        name: AsyncioDAT-windows-${{ matrix.build_type }}
-        path: build/bin/${{ matrix.build_type }}/AsyncioDAT.dll
+        name: AsyncioDAT-windows
+        path: build/bin/Release/AsyncioDAT.dll
         if-no-files-found: error
 
     - name: Upload build artifact (macOS)
       if: runner.os == 'macOS'
       uses: actions/upload-artifact@v7
       with:
-        name: AsyncioDAT-macos-${{ matrix.build_type }}
+        name: AsyncioDAT-macos
         path: build/bin/AsyncioDAT.plugin
         if-no-files-found: error

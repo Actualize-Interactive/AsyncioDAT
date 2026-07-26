@@ -173,8 +173,10 @@ AsyncioDAT::execute(DAT_Output* output, const OP_Inputs* inputs, void* reserved1
 	auto active = static_cast<bool>(inputs->getParInt("Active"));
 
 	if (active && !m_asyncioInitialized) {
-		if (!initializeAsyncio()) {
-			if (m_status_messages.empty() || strcmp(m_warning, m_status_messages.back().c_str()) != 0) {
+		// m_warning is null unless initializeAsyncio() took the one path that
+		// does not log its own failure.
+		if (!initializeAsyncio() && m_warning) {
+			if (m_status_messages.empty() || m_status_messages.back() != m_warning) {
 				addStatusMessage(m_warning);
 			}
 		}

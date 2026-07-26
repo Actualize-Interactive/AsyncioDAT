@@ -5,12 +5,15 @@ bug reports, fixes, docs, and features — are welcome.
 
 ## Reporting issues
 
-Open a GitHub issue and include:
+Open a GitHub issue using the bug report form, which asks for:
 
 - Your TouchDesigner version (e.g. 2025.32820) and OS.
 - What you expected to happen vs. what happened.
 - A minimal `.toe` or script that reproduces the problem, if possible.
 - Relevant output from the AsyncioDAT operator's status table / textport.
+
+Security issues go through [private reporting](SECURITY.md) instead, not a
+public issue.
 
 ## Development setup
 
@@ -65,10 +68,37 @@ changed is covered by or verified against the test scripts before opening a PR.
 ## Pull requests
 
 - Branch off `main` and keep PRs focused.
+- Use clear, imperative commit messages with a type prefix (`fix:`, `feat:`,
+  `docs:`, `test:`, `chore:`, `ci:`).
 - Match the existing code style (tabs in C++ sources, existing naming).
 - Update `README.md` / `TESTING.md` when you change behavior, parameters, or the
   Python API.
+- Add an entry under `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md) for any
+  user-visible change, and call out breaking changes explicitly.
 - Describe how you tested the change.
+
+**Operator parameter names and the Python API are stable.** A parameter's
+internal name (`Autopoll`, `Maxstatusrows`, …) is what saved `.toe` files store,
+so renaming one silently drops the user's setting on load. Prefer additive
+changes; if a break is unavoidable, say so in the PR and in the changelog.
+
+## Releasing
+
+Releases are cut from `main` by pushing a tag:
+
+1. In a PR, bump `project(AsyncioDAT VERSION …)` in `CMakeLists.txt` and move
+   the `[Unreleased]` changelog entries under a `## [x.y.z] - YYYY-MM-DD`
+   heading, adding the compare link at the bottom of the file.
+2. After it merges, tag the merge commit on `main` and push the tag:
+
+   ```bash
+   git tag vx.y.z && git push origin vx.y.z
+   ```
+
+The Release workflow builds, tests, and packages on Windows and macOS, refuses
+the tag if it is not an ancestor of `main`, and publishes the release using the
+changelog entry for that version as the release notes. It fails if no such entry
+exists.
 
 ## License
 
