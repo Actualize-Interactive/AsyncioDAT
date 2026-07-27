@@ -1,4 +1,4 @@
 # Test dependencies for the pytest binding suite.
 # Install into the Python 3.11 used to build the extension, e.g.:
 #   uv pip install -r tests/python/requirements.txt
-pytest>=8,<9
+pytest>=9.1.1,<10
