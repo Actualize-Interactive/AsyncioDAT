@@ -1,5 +1,16 @@
 cmake_minimum_required(VERSION 3.25)
-project(AsyncioDAT VERSION 0.4.0 LANGUAGES CXX)
+
+# macOS: TouchDesigner 2025 runs on macOS 13 and later, on Apple silicon and
+# Intel. Without these the plugin inherits the build machine's OS release as its
+# minimum and its CPU as its only architecture -- the CI runner is macOS 26 on
+# arm64, so v0.4.0 would only ever have loaded on a Mac newer than most users'.
+# 13.3 rather than 13.0 because asyncio_dat.cpp formats its status messages
+# with std::format, which libc++ only provides from 13.3. They must be set
+# before project(), and are ignored on other platforms.
+set(CMAKE_OSX_DEPLOYMENT_TARGET "13.3" CACHE STRING "Minimum macOS version the plugin loads on")
+set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures to build the plugin for")
+
+project(AsyncioDAT VERSION 0.4.1 LANGUAGES CXX)
 
 set(VERBOSE_STATUS OFF CACHE BOOL "Verbose status messages" FORCE)
 set(SUPPRESS_NOT_REFERENCED_WARNINGS ON CACHE BOOL "Suppress not referenced warnings" FORCE)
@@ -125,6 +136,18 @@ if(SUPPRESS_NOT_REFERENCED_WARNINGS)
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         target_compile_options(asyncio_dat PRIVATE -Wno-unused-parameter -Wno-unused-variable)  
     endif()
+endif()
+
+if(APPLE)
+    # The linker's implicit ad-hoc signature covers only the Mach-O, not the
+    # bundle, so `codesign --verify` rejects the .plugin and Gatekeeper reports
+    # a downloaded copy as damaged. Sign the whole bundle (still ad-hoc: no
+    # certificate needed). This runs before the copy to tests/td/Plugins below,
+    # so the copy carries the signature too.
+    add_custom_command(TARGET asyncio_dat POST_BUILD
+        COMMAND codesign --force --sign - "$<TARGET_BUNDLE_DIR:asyncio_dat>"
+        COMMENT "Ad-hoc signing AsyncioDAT.plugin"
+    )
 endif()
 
 # Add post-build command to copy the library to the Plugins folder
