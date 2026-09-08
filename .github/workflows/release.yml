@@ -24,7 +24,7 @@ jobs:
     - uses: actions/checkout@v7
 
     - name: Setup cmake
-      uses: lukka/get-cmake@v4.4.0
+      uses: lukka/get-cmake@v4.4.2
       with:
         cmakeVersion: '4.4.0'
 
