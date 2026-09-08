@@ -8,6 +8,33 @@ While the major version is `0`, breaking changes may land in a minor release.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-08
+
+Fixes the macOS release build, which TouchDesigner reported as corrupted.
+
+### Fixed
+
+- The v0.4.0 `AsyncioDAT.plugin` failed to load on every Mac. The release
+  runner is macOS 26 on Apple silicon, and nothing in the build pinned a
+  deployment target or an architecture, so the bundle inherited the runner's
+  macOS 26 as its minimum OS and arm64 as its only architecture. TouchDesigner
+  itself runs on macOS 13 and later, universal. The plugin is now built for
+  `arm64` and `x86_64` with a minimum of macOS 13.3 (the earliest libc++ that
+  provides the `std::format` the status messages use).
+- The bundle carried only the linker's implicit ad-hoc signature, which covers
+  the Mach-O but not the bundle, so `codesign --verify` rejected it. The whole
+  bundle is now ad-hoc signed after linking. It is still not notarized, so a
+  downloaded copy still needs `xattr -dr com.apple.quarantine` (see the README
+  install steps).
+- CI and the release gate now verify the macOS plugin links no Python library,
+  is universal, has the expected minimum OS, and passes `codesign --verify`, so
+  this class of binary cannot be published again.
+
+### Changed
+
+- README: the macOS build is universal, not arm64 only, and requires macOS 13.3
+  or newer.
+
 ## [0.4.0] - 2026-07-26
 
 The release that opens the repository to the public. One crash fix, and the
@@ -95,7 +122,8 @@ registry, the lifecycle callbacks, and the CI and release workflows.
 <!-- Entries for 0.1.0 through 0.3.0 are summarized retrospectively; this file
      was introduced in 0.4.0. -->
 
-[Unreleased]: https://github.com/Actualize-Interactive/AsyncioDAT/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Actualize-Interactive/AsyncioDAT/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/Actualize-Interactive/AsyncioDAT/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Actualize-Interactive/AsyncioDAT/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Actualize-Interactive/AsyncioDAT/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/Actualize-Interactive/AsyncioDAT/compare/v0.2.1...v0.2.2

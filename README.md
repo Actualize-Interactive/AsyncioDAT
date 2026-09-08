@@ -19,8 +19,8 @@ AsyncioDAT is a C++ TouchDesigner operator that provides a managed asyncio event
 
 - **TouchDesigner 2025.32820** or newer. The operator is built against Custom
   Operator SDK v4 and TouchDesigner's embedded CPython **3.11**.
-- **Windows 10/11**, or **macOS on Apple Silicon**. The macOS build is arm64
-  only, matching TouchDesigner.
+- **Windows 10/11**, or **macOS 13.3 or newer**. The macOS build is universal
+  (Apple silicon and Intel), like TouchDesigner itself.
 
 ## Installation
 
@@ -415,6 +415,14 @@ Python is **not** vendored in this repository — a uv-managed CPython ships the
 headers and import library CMake needs. The TouchDesigner Custom Operator SDK
 headers are included under `ext/td/include/` (see [NOTICE](NOTICE)).
 
+On macOS only the headers are used: the plugin links no Python library and
+resolves Python symbols from TouchDesigner's own interpreter when it loads, as
+any CPython extension module does. The build produces a universal (`arm64` and
+`x86_64`) bundle with a minimum of macOS 13.3, ad-hoc signed as a whole so
+`codesign --verify` accepts it; `CMAKE_OSX_DEPLOYMENT_TARGET` and
+`CMAKE_OSX_ARCHITECTURES` can be overridden on the CMake command line. Because
+they are cache variables, change them in a fresh build directory.
+
 ### Build Steps
 
 1. Clone the repository and install Python 3.11: `uv python install 3.11`
@@ -436,7 +444,9 @@ headers are included under `ext/td/include/` (see [NOTICE](NOTICE)).
 
 The project includes GitHub Actions workflows for:
 - **CI**: builds and runs the unit suites on Windows and macOS for every push and
-  pull request to `main`
+  pull request to `main`. On macOS it also checks that the plugin links no
+  Python library, is universal, targets macOS 13.3, and has a valid bundle
+  signature
 - **Release**: triggered by pushing a `v*.*.*` tag. It builds, tests, and
   packages on both platforms before publishing anything, and takes the release
   notes from the matching [CHANGELOG.md](CHANGELOG.md) entry. See
